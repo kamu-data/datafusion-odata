@@ -775,6 +775,7 @@ dependencies = [
  "http",
  "indoc",
  "quick-xml",
+ "regex",
  "serde",
  "thiserror",
  "tokio",

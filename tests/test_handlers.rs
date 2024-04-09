@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use datafusion::{arrow::datatypes::SchemaRef, prelude::*, sql::TableReference};
 use datafusion_odata::{
-    collection::{QueryParams, QueryParamsRaw},
+    collection::{CollectionAddr, QueryParams, QueryParamsRaw},
     context::*,
 };
 use indoc::indoc;
@@ -12,7 +12,7 @@ use indoc::indoc;
 
 #[tokio::test]
 async fn test_service() {
-    let ctx = fixture().await;
+    let ctx = fixture("tickers.spy").await;
     let resp = datafusion_odata::handlers::odata_service_handler(axum::Extension(ctx)).await;
     assert_eq!(
         *resp.body(),
@@ -42,7 +42,7 @@ async fn test_service() {
 
 #[tokio::test]
 async fn test_metadata() {
-    let ctx = fixture().await;
+    let ctx = fixture("tickers.spy").await;
     let resp = datafusion_odata::handlers::odata_metadata_handler(axum::Extension(ctx)).await;
     assert_eq!(
         *resp.body(),
@@ -92,7 +92,7 @@ async fn test_metadata() {
 
 #[tokio::test]
 async fn test_collection() {
-    let ctx = fixture().await;
+    let ctx = fixture("tickers.spy").await;
     let resp = datafusion_odata::handlers::odata_collection_handler(
         axum::Extension(ctx),
         axum::extract::Query(QueryParamsRaw {
@@ -155,7 +155,71 @@ async fn test_collection() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-async fn fixture() -> Arc<ODataContext> {
+#[tokio::test]
+async fn test_collection_entity_by_id() {
+    let ctx = fixture("tickers.spy(1)").await;
+    let resp = datafusion_odata::handlers::odata_collection_handler(
+        axum::Extension(ctx),
+        axum::extract::Query(QueryParamsRaw {
+            select: Some("offset,close".to_string()),
+            order_by: None,
+            skip: None,
+            top: None,
+        }),
+        axum::http::HeaderMap::new(),
+    )
+    .await;
+    assert_eq!(
+        *resp.body(),
+        indoc!(
+            r#"
+            <?xml version="1.0" encoding="utf-8"?>
+            <entry
+             xml:base="http://example.com/odata/"
+             xmlns="http://www.w3.org/2005/Atom"
+             xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
+             xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+            <id>http://example.com/odatatickers.spy(1)</id>
+            <category scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" term="default.tickers.spy"/>
+            <link rel="edit" title="tickers.spy" href="tickers.spy(1)"/>
+            <title/>
+            <updated>2023-01-01T00:00:00.000Z</updated>
+            <author><name/></author>
+            <content type="application/xml">
+            <m:properties>
+            <d:offset m:type="Edm.Int64">1</d:offset>
+            <d:close m:type="Edm.Double">134.5937</d:close>
+            </m:properties>
+            </content>
+            </entry>
+            "#
+        )
+        .replace('\n', "")
+    );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[tokio::test]
+async fn test_collection_entity_by_id_not_found() {
+    let ctx = fixture("tickers.spy(999999)").await;
+    let resp = datafusion_odata::handlers::odata_collection_handler(
+        axum::Extension(ctx),
+        axum::extract::Query(QueryParamsRaw {
+            select: Some("offset,close".to_string()),
+            order_by: None,
+            skip: None,
+            top: None,
+        }),
+        axum::http::HeaderMap::new(),
+    )
+    .await;
+    assert_eq!(resp.status(), http::StatusCode::NOT_FOUND);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+async fn fixture(collection_elem: &str) -> Arc<ODataContext> {
     let ctx = SessionContext::new();
     ctx.register_parquet(
         "covid19.canada",
@@ -182,7 +246,7 @@ async fn fixture() -> Arc<ODataContext> {
     Arc::new(ODataContext::new(
         ctx,
         "http://example.com/odata".to_string(),
-        Some("tickers.spy".to_string()),
+        Some(CollectionAddr::decode(collection_elem).unwrap()),
     ))
 }
 
@@ -191,19 +255,19 @@ async fn fixture() -> Arc<ODataContext> {
 pub struct ODataContext {
     query_ctx: SessionContext,
     service_base_url: String,
-    collection_name: Option<String>,
+    addr: Option<CollectionAddr>,
 }
 
 impl ODataContext {
     fn new(
         query_ctx: SessionContext,
         service_base_url: String,
-        collection_name: Option<String>,
+        addr: Option<CollectionAddr>,
     ) -> Self {
         Self {
             query_ctx,
             service_base_url,
-            collection_name,
+            addr,
         }
     }
 }
@@ -229,7 +293,10 @@ impl ServiceContext for ODataContext {
             collections.push(Arc::new(ODataContext {
                 query_ctx: self.query_ctx.clone(),
                 service_base_url: self.service_base_url.clone(),
-                collection_name: Some(table_name),
+                addr: Some(CollectionAddr {
+                    name: table_name,
+                    key: None,
+                }),
             }));
         }
 
@@ -243,22 +310,22 @@ impl ServiceContext for ODataContext {
 
 #[async_trait::async_trait]
 impl CollectionContext for ODataContext {
+    fn addr(&self) -> &CollectionAddr {
+        self.addr.as_ref().unwrap()
+    }
+
     fn service_base_url(&self) -> String {
         self.service_base_url.clone()
     }
 
     fn collection_base_url(&self) -> String {
         let service_base_url = &self.service_base_url;
-        let collection_name = self.collection_name.as_deref().unwrap();
+        let collection_name = self.collection_name();
         format!("{service_base_url}{collection_name}")
     }
 
     fn collection_name(&self) -> String {
-        self.collection_name.clone().unwrap()
-    }
-
-    async fn collection_key(&self) -> String {
-        "offset".to_string()
+        self.addr().name.clone()
     }
 
     async fn last_updated_time(&self) -> DateTime<Utc> {
@@ -269,9 +336,7 @@ impl CollectionContext for ODataContext {
 
     async fn schema(&self) -> SchemaRef {
         self.query_ctx
-            .table_provider(TableReference::bare(
-                self.collection_name.as_deref().unwrap(),
-            ))
+            .table_provider(TableReference::bare(self.collection_name()))
             .await
             .unwrap()
             .schema()
@@ -280,12 +345,17 @@ impl CollectionContext for ODataContext {
     async fn query(&self, query: QueryParams) -> datafusion::error::Result<DataFrame> {
         let df = self
             .query_ctx
-            .table(TableReference::bare(
-                self.collection_name.as_deref().unwrap(),
-            ))
+            .table(TableReference::bare(self.collection_name()))
             .await?;
 
-        query.apply(df, 100, usize::MAX)
+        query.apply(
+            df,
+            self.addr(),
+            "offset",
+            &self.key_column_alias(),
+            100,
+            usize::MAX,
+        )
     }
 
     fn on_unsupported_feature(&self) -> OnUnsupported {

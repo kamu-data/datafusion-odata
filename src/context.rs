@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use datafusion::{arrow::datatypes::SchemaRef, dataframe::DataFrame};
 
-use crate::collection::QueryParams;
+use crate::collection::{CollectionAddr, QueryParams};
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -22,6 +22,8 @@ pub trait ServiceContext: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait CollectionContext: Send + Sync {
+    fn addr(&self) -> &CollectionAddr;
+
     fn service_base_url(&self) -> String;
 
     fn collection_base_url(&self) -> String;
@@ -32,7 +34,10 @@ pub trait CollectionContext: Send + Sync {
 
     fn collection_name(&self) -> String;
 
-    async fn collection_key(&self) -> String;
+    // Synthetic column name that will be used to propagate entity IDs
+    fn key_column_alias(&self) -> String {
+        "__id__".to_string()
+    }
 
     async fn last_updated_time(&self) -> DateTime<Utc>;
 

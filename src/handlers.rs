@@ -105,10 +105,10 @@ pub async fn odata_metadata_handler(
 pub async fn odata_collection_handler(
     axum::Extension(ctx): axum::Extension<Arc<dyn CollectionContext>>,
     axum::extract::Query(query): axum::extract::Query<QueryParamsRaw>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
 ) -> axum::response::Response<String> {
     let query = query.decode();
-    tracing::debug!(?query, ?headers, "Collection query");
+    tracing::debug!(?query, "Decoded query");
 
     let df = ctx.query(query).await.unwrap();
 
@@ -122,15 +122,43 @@ pub async fn odata_collection_handler(
         .sum();
 
     let mut writer = quick_xml::Writer::new(Vec::<u8>::new());
-    crate::atom::write_atom_feed_from_records(
-        &schema,
-        record_batches,
-        ctx.as_ref(),
-        ctx.last_updated_time().await,
-        ctx.on_unsupported_feature(),
-        &mut writer,
-    )
-    .unwrap();
+
+    if ctx.addr().key.is_none() {
+        crate::atom::write_atom_feed_from_records(
+            &schema,
+            record_batches,
+            ctx.as_ref(),
+            ctx.last_updated_time().await,
+            ctx.on_unsupported_feature(),
+            &mut writer,
+        )
+        .unwrap();
+    } else {
+        let num_rows: usize = record_batches.iter().map(|b| b.num_rows()).sum();
+        assert!(num_rows <= 1, "Request by key returned {} rows", num_rows);
+        assert!(
+            record_batches.len() <= 1,
+            "Request by key returned {} batches",
+            record_batches.len()
+        );
+
+        if record_batches.len() != 1 || record_batches[0].num_rows() != 1 {
+            return axum::response::Response::builder()
+                .status(http::StatusCode::NOT_FOUND)
+                .body("".into())
+                .unwrap();
+        }
+
+        crate::atom::write_atom_entry_from_record(
+            &schema,
+            record_batches.into_iter().next().unwrap(),
+            ctx.as_ref(),
+            ctx.last_updated_time().await,
+            ctx.on_unsupported_feature(),
+            &mut writer,
+        )
+        .unwrap();
+    }
 
     let body = String::from_utf8(writer.into_inner()).unwrap();
 

@@ -42,4 +42,11 @@ This code is super raw and experimental. Very far from prod-ready. Use at your o
   - [x] `$top`
   - [ ] `$filter`
   - [ ] pagination
-  - [ ] real object IDs
+  - [x] real object IDs
+- [x] Collection entry by ID (`service/collection(id)`)
+  - [x] Numeric IDs
+  - [ ] Other ID types
+- [ ] Parameters
+- [ ] Nested collections
+- [ ] Functions
+- [ ] ...

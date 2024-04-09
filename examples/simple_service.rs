@@ -9,6 +9,10 @@ use datafusion_odata::context::*;
 use datafusion_odata::handlers::*;
 
 ///////////////////////////////////////////////////////////////////////////////
+
+const DEFAULT_MAX_ROWS: usize = 100;
+
+///////////////////////////////////////////////////////////////////////////////
 // Real handlers
 // Wrap the library-provided handlers in order to extract load balancer hostname from HTTP request.
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,15 +40,18 @@ pub async fn odata_metadata_handler(
 pub async fn odata_collection_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
     axum::extract::TypedHeader(host): axum::extract::TypedHeader<axum::headers::Host>,
-    axum::extract::Path(collection_name): axum::extract::Path<String>,
+    axum::extract::Path(collection_path_element): axum::extract::Path<String>,
     query: axum::extract::Query<QueryParamsRaw>,
     headers: axum::http::HeaderMap,
 ) -> axum::response::Response<String> {
-    let ctx = Arc::new(ODataContext::new_collection(
-        query_ctx,
-        host,
-        collection_name,
-    ));
+    let Some(addr) = CollectionAddr::decode(&collection_path_element) else {
+        return axum::response::Response::builder()
+            .status(http::StatusCode::NOT_FOUND)
+            .body("".into())
+            .unwrap();
+    };
+
+    let ctx = Arc::new(ODataContext::new_collection(query_ctx, host, addr));
     datafusion_odata::handlers::odata_collection_handler(axum::Extension(ctx), query, headers).await
 }
 
@@ -57,7 +64,7 @@ pub async fn odata_collection_handler(
 pub struct ODataContext {
     query_ctx: SessionContext,
     service_base_url: String,
-    collection_name: Option<String>,
+    addr: Option<CollectionAddr>,
 }
 
 impl ODataContext {
@@ -66,17 +73,17 @@ impl ODataContext {
         Self {
             query_ctx,
             service_base_url: format!("{scheme}://{host}/"),
-            collection_name: None,
+            addr: None,
         }
     }
 
     fn new_collection(
         query_ctx: SessionContext,
         host: axum::headers::Host,
-        collection_name: String,
+        addr: CollectionAddr,
     ) -> Self {
         let mut this = Self::new_service(query_ctx, host);
-        this.collection_name = Some(collection_name);
+        this.addr = Some(addr);
         this
     }
 }
@@ -113,7 +120,10 @@ impl ServiceContext for ODataContext {
             collections.push(Arc::new(ODataContext {
                 query_ctx: self.query_ctx.clone(),
                 service_base_url: self.service_base_url.clone(),
-                collection_name: Some(table_name),
+                addr: Some(CollectionAddr {
+                    name: table_name,
+                    key: None,
+                }),
             }));
         }
 
@@ -127,22 +137,22 @@ impl ServiceContext for ODataContext {
 
 #[async_trait::async_trait]
 impl CollectionContext for ODataContext {
+    fn addr(&self) -> &CollectionAddr {
+        self.addr.as_ref().unwrap()
+    }
+
     fn service_base_url(&self) -> String {
         self.service_base_url.clone()
     }
 
     fn collection_base_url(&self) -> String {
         let service_base_url = &self.service_base_url;
-        let collection_name = self.collection_name.as_deref().unwrap();
+        let collection_name = self.collection_name();
         format!("{service_base_url}{collection_name}")
     }
 
     fn collection_name(&self) -> String {
-        self.collection_name.clone().unwrap()
-    }
-
-    async fn collection_key(&self) -> String {
-        "offset".to_string()
+        self.addr.as_ref().unwrap().name.clone()
     }
 
     async fn last_updated_time(&self) -> DateTime<Utc> {
@@ -151,9 +161,7 @@ impl CollectionContext for ODataContext {
 
     async fn schema(&self) -> SchemaRef {
         self.query_ctx
-            .table_provider(TableReference::bare(
-                self.collection_name.as_deref().unwrap(),
-            ))
+            .table_provider(TableReference::bare(self.collection_name()))
             .await
             .unwrap()
             .schema()
@@ -162,12 +170,17 @@ impl CollectionContext for ODataContext {
     async fn query(&self, query: QueryParams) -> datafusion::error::Result<DataFrame> {
         let df = self
             .query_ctx
-            .table(TableReference::bare(
-                self.collection_name.as_deref().unwrap(),
-            ))
+            .table(TableReference::bare(self.collection_name()))
             .await?;
 
-        query.apply(df, 100, usize::MAX)
+        query.apply(
+            df,
+            self.addr(),
+            "offset",
+            &self.key_column_alias(),
+            DEFAULT_MAX_ROWS,
+            usize::MAX,
+        )
     }
 
     fn on_unsupported_feature(&self) -> OnUnsupported {
