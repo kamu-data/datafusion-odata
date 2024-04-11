@@ -19,7 +19,7 @@ const DEFAULT_MAX_ROWS: usize = 100;
 
 pub async fn odata_service_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    axum::extract::TypedHeader(host): axum::extract::TypedHeader<axum::headers::Host>,
+    host: axum::extract::Host,
 ) -> axum::response::Response<String> {
     let ctx = Arc::new(ODataContext::new_service(query_ctx, host));
     datafusion_odata::handlers::odata_service_handler(axum::Extension(ctx)).await
@@ -29,7 +29,7 @@ pub async fn odata_service_handler(
 
 pub async fn odata_metadata_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    axum::extract::TypedHeader(host): axum::extract::TypedHeader<axum::headers::Host>,
+    host: axum::extract::Host,
 ) -> axum::response::Response<String> {
     let ctx = ODataContext::new_service(query_ctx, host);
     datafusion_odata::handlers::odata_metadata_handler(axum::Extension(Arc::new(ctx))).await
@@ -39,7 +39,7 @@ pub async fn odata_metadata_handler(
 
 pub async fn odata_collection_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    axum::extract::TypedHeader(host): axum::extract::TypedHeader<axum::headers::Host>,
+    host: axum::extract::Host,
     axum::extract::Path(collection_path_element): axum::extract::Path<String>,
     query: axum::extract::Query<QueryParamsRaw>,
     headers: axum::http::HeaderMap,
@@ -68,18 +68,18 @@ pub struct ODataContext {
 }
 
 impl ODataContext {
-    fn new_service(query_ctx: SessionContext, host: axum::headers::Host) -> Self {
+    fn new_service(query_ctx: SessionContext, host: axum::extract::Host) -> Self {
         let scheme = std::env::var("SCHEME").unwrap_or("http".to_string());
         Self {
             query_ctx,
-            service_base_url: format!("{scheme}://{host}/"),
+            service_base_url: format!("{scheme}://{}/", host.0),
             addr: None,
         }
     }
 
     fn new_collection(
         query_ctx: SessionContext,
-        host: axum::headers::Host,
+        host: axum::extract::Host,
         addr: CollectionAddr,
     ) -> Self {
         let mut this = Self::new_service(query_ctx, host);
@@ -282,7 +282,8 @@ async fn main() {
         .with_state(ctx);
 
     tracing::info!("Runninng on http://localhost:3000/");
-    let server = axum::Server::bind(&([0, 0, 0, 0], 3000).into()).serve(app.into_make_service());
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let server = axum::serve(listener, app);
 
     if let Err(err) = server.await {
         eprintln!("server error: {}", err);

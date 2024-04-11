@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-odata"
-version = "36.0.0"
+version = "36.1.0"
 edition = "2021"
 repository = "https://github.com/kamu-data/datafusion-odata"
 description = "OData protocol adapter for Apache Datafusion"
@@ -10,10 +10,11 @@ license = "Apache-2.0"
 
 [dependencies]
 async-trait = "0.1"
-axum = { version = "0.6", features = ["headers"] }
+axum = { version = "0.7" }
 chrono = { version = "0.4", default-features = false }
 datafusion = { version = "36", default-features = false }
-http = "0.2"
+hyper = { version = "1", features = ["server"] }
+http = "1.1"
 quick-xml = { version = "0.31", features = ["serialize"] }
 regex = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -21,12 +22,21 @@ thiserror = { version = "1" }
 tracing = "0.1"
 
 [dev-dependencies]
-datafusion = { version = "36", default-features = false, features = ["parquet"] }
+datafusion = { version = "36", default-features = false, features = [
+    "parquet",
+] }
 indoc = { version = "2" }
 tracing-appender = "0.2"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "ansi", "env-filter"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "fmt",
+    "ansi",
+    "env-filter",
+] }
 tracing-log = "0.2"
 tracing-bunyan-formatter = "0.3"
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread"] }
+tokio = { version = "1", default-features = false, features = [
+    "rt-multi-thread",
+] }
 tower = "0.4"
-tower-http = { version = "0.4", features = ["trace", "cors"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
