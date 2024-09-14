@@ -7,6 +7,8 @@ pub enum ODataError {
     #[error(transparent)]
     UnsupportedDataType(#[from] UnsupportedDataType),
     #[error(transparent)]
+    UnsupportedColumnType(#[from] UnsupportedColumnType),
+    #[error(transparent)]
     UnsupportedFeature(#[from] UnsupportedFeature),
     #[error(transparent)]
     CollectionNotFound(#[from] CollectionNotFound),
@@ -44,6 +46,7 @@ impl axum::response::IntoResponse for ODataError {
             }
             Self::CollectionNotFound(e) => e.into_response(),
             Self::UnsupportedDataType(e) => e.into_response(),
+            Self::UnsupportedColumnType(e) => e.into_response(),
             Self::UnsupportedFeature(e) => e.into_response(),
             Self::CollectionAddressNotAssigned(e) => e.into_response(),
             Self::KeyColumnNotAssigned(e) => e.into_response(),
@@ -137,6 +140,26 @@ impl axum::response::IntoResponse for UnsupportedDataType {
 ///////////////////////////////////////////////////////////////////////////////
 
 #[derive(thiserror::Error, Debug)]
+#[error("Unsupported column type: {col_type}")]
+pub struct UnsupportedColumnType {
+    pub col_type: DataType,
+}
+
+impl UnsupportedColumnType {
+    pub fn new(col_type: DataType) -> Self {
+        Self { col_type }
+    }
+}
+
+impl axum::response::IntoResponse for UnsupportedColumnType {
+    fn into_response(self) -> axum::response::Response {
+        (http::StatusCode::NOT_IMPLEMENTED, self.to_string()).into_response()
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
 #[error("Unsupported feature: {feature}")]
 pub struct UnsupportedFeature {
     pub feature: String,
@@ -157,3 +180,9 @@ impl axum::response::IntoResponse for UnsupportedFeature {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+impl From<quick_xml::Error> for ODataError {
+    fn from(error: quick_xml::Error) -> Self {
+        ODataError::Internal(InternalError::new(error))
+    }
+}

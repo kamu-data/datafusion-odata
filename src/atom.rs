@@ -9,7 +9,7 @@ use quick_xml::events::*;
 
 use crate::{
     context::{CollectionContext, OnUnsupported},
-    error::ODataError,
+    error::{ODataError, UnsupportedColumnType},
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -123,7 +123,7 @@ fn write_atom_feed_from_records_impl<W>(
     collection_name: String,
     type_namespace: String,
     type_name: String,
-) -> std::result::Result<(), quick_xml::Error>
+) -> std::result::Result<(), ODataError>
 where
     W: std::io::Write,
 {
@@ -215,7 +215,7 @@ where
             //   <name />
             // </author>
 
-            let id = encode_primitive_dyn(batch.column(id_column_index), row)
+            let id = encode_primitive_dyn(batch.column(id_column_index), row)?
                 .unescape()
                 .unwrap();
 
@@ -270,7 +270,7 @@ where
                 let mut start = BytesStart::new(ctag);
                 start.push_attribute(("m:type", *typ));
                 writer.write_event(Event::Start(start))?;
-                writer.write_event(Event::Text(encode_primitive_dyn(col, row)))?;
+                writer.write_event(Event::Text(encode_primitive_dyn(col, row)?))?;
                 writer.write_event(Event::End(BytesEnd::new(ctag)))?;
             }
 
@@ -372,7 +372,7 @@ fn write_atom_entry_from_record_impl<W>(
     collection_name: String,
     type_namespace: String,
     type_name: String,
-) -> std::result::Result<(), quick_xml::Error>
+) -> std::result::Result<(), ODataError>
 where
     W: std::io::Write,
 {
@@ -438,7 +438,7 @@ where
     // </author>
 
     let row = 0;
-    let id = encode_primitive_dyn(batch.column(id_column_index), row)
+    let id = encode_primitive_dyn(batch.column(id_column_index), row)?
         .unescape()
         .unwrap();
 
@@ -493,7 +493,7 @@ where
         let mut start = BytesStart::new(ctag);
         start.push_attribute(("m:type", *typ));
         writer.write_event(Event::Start(start))?;
-        writer.write_event(Event::Text(encode_primitive_dyn(col, row)))?;
+        writer.write_event(Event::Text(encode_primitive_dyn(col, row)?))?;
         writer.write_event(Event::End(BytesEnd::new(ctag)))?;
     }
 
@@ -506,71 +506,89 @@ where
 
 ///////////////////////////////////////////////////////////////////////////////
 
-fn encode_primitive_dyn(col: &Arc<dyn Array>, row: usize) -> BytesText {
+fn encode_primitive_dyn(
+    col: &Arc<dyn Array>,
+    row: usize,
+) -> Result<BytesText, UnsupportedColumnType> {
+    let col_type = col.data_type().clone();
     if col.is_null(row) {
-        BytesText::new("null")
+        match col_type {
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64 => Ok(BytesText::new("0")),
+            DataType::Float16 | DataType::Float32 | DataType::Float64 => Ok(BytesText::new("0.0")),
+            // TODO add other types here
+            _ => Ok(BytesText::new("null")),
+        }
     } else {
-        match col.data_type() {
-            DataType::Null => todo!(),
+        match col_type {
+            DataType::Null => Err(UnsupportedColumnType::new(col_type)),
             DataType::Boolean => {
                 let arr = col.as_boolean();
                 let val = arr.value(row).to_string();
-                BytesText::from_escaped(val)
+                Ok(BytesText::from_escaped(val))
             }
-            DataType::Int8 => encode_primitive::<Int8Type>(col, row),
-            DataType::Int16 => encode_primitive::<Int16Type>(col, row),
-            DataType::Int32 => encode_primitive::<Int32Type>(col, row),
-            DataType::Int64 => encode_primitive::<Int64Type>(col, row),
-            DataType::UInt8 => encode_primitive::<UInt8Type>(col, row),
-            DataType::UInt16 => encode_primitive::<UInt16Type>(col, row),
-            DataType::UInt32 => encode_primitive::<UInt32Type>(col, row),
-            DataType::UInt64 => encode_primitive::<UInt64Type>(col, row),
-            DataType::Float16 => encode_primitive::<Float16Type>(col, row),
-            DataType::Float32 => encode_primitive::<Float32Type>(col, row),
-            DataType::Float64 => encode_primitive::<Float64Type>(col, row),
+            DataType::Int8 => Ok(encode_primitive::<Int8Type>(col, row)),
+            DataType::Int16 => Ok(encode_primitive::<Int16Type>(col, row)),
+            DataType::Int32 => Ok(encode_primitive::<Int32Type>(col, row)),
+            DataType::Int64 => Ok(encode_primitive::<Int64Type>(col, row)),
+            DataType::UInt8 => Ok(encode_primitive::<UInt8Type>(col, row)),
+            DataType::UInt16 => Ok(encode_primitive::<UInt16Type>(col, row)),
+            DataType::UInt32 => Ok(encode_primitive::<UInt32Type>(col, row)),
+            DataType::UInt64 => Ok(encode_primitive::<UInt64Type>(col, row)),
+            DataType::Float16 => Ok(encode_primitive::<Float16Type>(col, row)),
+            DataType::Float32 => Ok(encode_primitive::<Float32Type>(col, row)),
+            DataType::Float64 => Ok(encode_primitive::<Float64Type>(col, row)),
             DataType::Timestamp(_, _) => {
                 let arr = col.as_primitive::<TimestampMillisecondType>();
                 let ticks = arr.value(row);
                 let ts = chrono::DateTime::from_timestamp_millis(ticks).unwrap();
-                encode_date_time(&ts)
+                Ok(encode_date_time(&ts))
             }
-            DataType::Date32 => todo!(),
+            DataType::Date32 => Err(UnsupportedColumnType::new(col_type)),
             DataType::Date64 => {
                 let arr = col.as_primitive::<Date64Type>();
                 let ticks = arr.value(row);
                 let ts = chrono::DateTime::from_timestamp_millis(ticks).unwrap();
-                encode_date_time(&ts)
+                Ok(encode_date_time(&ts))
             }
-            DataType::Time32(_) => todo!(),
-            DataType::Time64(_) => todo!(),
-            DataType::Duration(_) => todo!(),
-            DataType::Interval(_) => todo!(),
-            DataType::Binary => todo!(),
-            DataType::FixedSizeBinary(_) => todo!(),
-            DataType::LargeBinary => todo!(),
-            DataType::BinaryView => todo!(),
+            DataType::Time32(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Time64(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Duration(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Interval(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Binary => Err(UnsupportedColumnType::new(col_type)),
+            DataType::FixedSizeBinary(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::LargeBinary => Err(UnsupportedColumnType::new(col_type)),
+            DataType::BinaryView => Err(UnsupportedColumnType::new(col_type)),
             DataType::Utf8 => {
                 let arr = col.as_string::<i32>();
                 let val = arr.value(row);
-                BytesText::from_escaped(quick_xml::escape::escape(val))
+                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
             }
             DataType::LargeUtf8 => {
                 let arr = col.as_string::<i64>();
                 let val = arr.value(row);
-                BytesText::from_escaped(quick_xml::escape::escape(val))
+                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
             }
-            DataType::Utf8View => todo!(),
-            DataType::List(_) => todo!(),
-            DataType::FixedSizeList(_, _) => todo!(),
-            DataType::LargeList(_) => todo!(),
-            DataType::ListView(_) | DataType::LargeListView(_) => todo!(),
-            DataType::Struct(_) => todo!(),
-            DataType::Union(_, _) => todo!(),
-            DataType::Dictionary(_, _) => todo!(),
-            DataType::Decimal128(_, _) => todo!(),
-            DataType::Decimal256(_, _) => todo!(),
-            DataType::Map(_, _) => todo!(),
-            DataType::RunEndEncoded(_, _) => todo!(),
+            DataType::Utf8View => Err(UnsupportedColumnType::new(col_type)),
+            DataType::List(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::FixedSizeList(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::LargeList(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::ListView(_) | DataType::LargeListView(_) => {
+                Err(UnsupportedColumnType::new(col_type))
+            }
+            DataType::Struct(_) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Union(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Dictionary(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Decimal128(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Decimal256(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::Map(_, _) => Err(UnsupportedColumnType::new(col_type)),
+            DataType::RunEndEncoded(_, _) => Err(UnsupportedColumnType::new(col_type)),
         }
     }
 }
@@ -610,7 +628,7 @@ mod tests {
         let values: Int64Array = vec![1, 2, 3].into();
         let values = Arc::new(values) as Arc<dyn Array>;
 
-        let result = encode_primitive_dyn(&values, 0);
+        let result = encode_primitive_dyn(&values, 0).unwrap();
         assert_eq!(result, BytesText::new("1"));
 
         let values = [chrono::DateTime::from_timestamp_millis(1726012800000).unwrap()];
@@ -621,7 +639,7 @@ mod tests {
             .into();
         let values = Arc::new(values) as Arc<dyn Array>;
 
-        let result = encode_primitive_dyn(&values, 0);
+        let result = encode_primitive_dyn(&values, 0).unwrap();
         assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00:00.000Z"));
     }
 }
