@@ -65,6 +65,10 @@ use crate::{
 //     </content>
 //   </entry>
 // </feed>
+//
+// TODO: Use erased dyn Writer type
+// TODO: Extract `CollectionInfo` type to avoid propagating
+//       a bunch of individual parameters
 pub fn write_atom_feed_from_records<W>(
     schema: &Schema,
     record_batches: Vec<RecordBatch>,
@@ -91,42 +95,6 @@ where
         collection_base_url.pop();
     }
 
-    write_atom_feed_from_records_impl(
-        schema,
-        record_batches,
-        ctx,
-        updated_time,
-        on_unsupported,
-        writer,
-        service_base_url,
-        collection_base_url,
-        collection_name,
-        type_namespace,
-        type_name,
-    )
-    .map_err(ODataError::internal)
-}
-
-// TODO: Use erased dyn Writer type
-// TODO: Extract `CollectionInfo` type to avoid propagating
-//       a bunch of individual parameters
-#[allow(clippy::too_many_arguments)]
-fn write_atom_feed_from_records_impl<W>(
-    schema: &Schema,
-    record_batches: Vec<RecordBatch>,
-    ctx: &dyn CollectionContext,
-    updated_time: DateTime<Utc>,
-    on_unsupported: OnUnsupported,
-    writer: &mut quick_xml::Writer<W>,
-    service_base_url: String,
-    collection_base_url: String,
-    collection_name: String,
-    type_namespace: String,
-    type_name: String,
-) -> std::result::Result<(), ODataError>
-where
-    W: std::io::Write,
-{
     let fq_type = format!("{type_namespace}.{type_name}");
 
     let mut columns = Vec::new();
@@ -312,6 +280,9 @@ where
 //     </m:properties>
 //   </content>
 // </entry>
+// TODO: Use erased dyn Writer type
+// TODO: Extract `CollectionInfo` type to avoid propagating
+//       a bunch of individual parameters
 pub fn write_atom_entry_from_record<W>(
     schema: &Schema,
     batch: RecordBatch,
@@ -340,42 +311,6 @@ where
         collection_base_url.pop();
     }
 
-    write_atom_entry_from_record_impl(
-        schema,
-        batch,
-        ctx,
-        updated_time,
-        on_unsupported,
-        writer,
-        service_base_url,
-        collection_base_url,
-        collection_name,
-        type_namespace,
-        type_name,
-    )
-    .map_err(ODataError::internal)
-}
-
-// TODO: Use erased dyn Writer type
-// TODO: Extract `CollectionInfo` type to avoid propagating
-//       a bunch of individual parameters
-#[allow(clippy::too_many_arguments)]
-fn write_atom_entry_from_record_impl<W>(
-    schema: &Schema,
-    batch: RecordBatch,
-    ctx: &dyn CollectionContext,
-    updated_time: DateTime<Utc>,
-    on_unsupported: OnUnsupported,
-    writer: &mut quick_xml::Writer<W>,
-    service_base_url: String,
-    collection_base_url: String,
-    collection_name: String,
-    type_namespace: String,
-    type_name: String,
-) -> std::result::Result<(), ODataError>
-where
-    W: std::io::Write,
-{
     let fq_type = format!("{type_namespace}.{type_name}");
 
     let mut columns = Vec::new();
@@ -512,19 +447,7 @@ fn encode_primitive_dyn(
 ) -> Result<BytesText, UnsupportedColumnType> {
     let col_type = col.data_type().clone();
     if col.is_null(row) {
-        match col_type {
-            DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64 => Ok(BytesText::new("0")),
-            DataType::Float16 | DataType::Float32 | DataType::Float64 => Ok(BytesText::new("0.0")),
-            // TODO add other types here
-            _ => Ok(BytesText::new("null")),
-        }
+        Ok(BytesText::new("null"))
     } else {
         match col_type {
             DataType::Null => Err(UnsupportedColumnType::new(col_type)),
