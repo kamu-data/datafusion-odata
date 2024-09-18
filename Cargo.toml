@@ -12,7 +12,7 @@ license = "Apache-2.0"
 async-trait = "0.1"
 axum = { version = "0.7" }
 chrono = { version = "0.4", default-features = false }
-datafusion = { version = "41", default-features = false }
+datafusion = { version = "42", default-features = false }
 hyper = { version = "1", features = ["server"] }
 http = "1.1"
 quick-xml = { version = "0.36", features = ["serialize"] }
@@ -22,7 +22,7 @@ thiserror = { version = "1" }
 tracing = "0.1"
 
 [dev-dependencies]
-datafusion = { version = "41", default-features = false, features = [
+datafusion = { version = "42", default-features = false, features = [
     "parquet",
 ] }
 indoc = { version = "2" }
