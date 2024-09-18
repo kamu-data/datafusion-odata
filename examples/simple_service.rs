@@ -298,10 +298,7 @@ async fn main() {
         .with_state(ctx);
 
     tracing::info!("Runninng on http://localhost:50051/");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:50051")
-        .await
-        .unwrap();
-    let server = axum::serve(listener, app);
+    let server = axum::Server::bind(&([0, 0, 0, 0], 50051).into()).serve(app.into_make_service());
 
     if let Err(err) = server.await {
         eprintln!("server error: {}", err);

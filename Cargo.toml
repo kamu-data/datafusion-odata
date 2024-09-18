@@ -10,11 +10,10 @@ license = "Apache-2.0"
 
 [dependencies]
 async-trait = "0.1"
-axum = { version = "0.7" }
+axum = { version = "0.6" }
 chrono = { version = "0.4", default-features = false }
 datafusion = { version = "42", default-features = false }
-hyper = { version = "1", features = ["server"] }
-http = "1.1"
+http = "0.2"
 quick-xml = { version = "0.36", features = ["serialize"] }
 regex = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -38,8 +37,8 @@ tracing-bunyan-formatter = "0.3"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
 ] }
-tower = "0.5"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["trace", "cors"] }
 
 [patch.crates-io]
 # datafusion = { git = 'https://github.com/apache/arrow-datafusion.git', tag = '42.0.0-rc1' }
