@@ -126,7 +126,7 @@ impl CollectionAddr {
         let re = regex::Regex::new(r#"^(?<name>[A-Za-z0-9._-]+)(\((?<key>[^)]+)\))?$"#).unwrap();
         let c = re.captures(collection_path_element)?;
 
-        let name = c.name("name").unwrap().as_str().to_string();
+        let name = c.name("name")?.as_str().to_string();
         let key = c.name("key").map(|m| m.as_str().to_string());
 
         Some(Self { name, key })

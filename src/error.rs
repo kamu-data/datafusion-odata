@@ -1,4 +1,5 @@
 use datafusion::arrow::datatypes::DataType;
+use std::string::FromUtf8Error;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -9,7 +10,15 @@ pub enum ODataError {
     #[error(transparent)]
     UnsupportedColumnType(#[from] UnsupportedColumnType),
     #[error(transparent)]
+    BatchUnexpectedRowsNumber(#[from] BatchUnexpectedRowsNumber),
+    #[error(transparent)]
+    UnexpectedBatchesNumber(#[from] UnexpectedBatchesNumber),
+    #[error(transparent)]
+    FromUtf8Error(#[from] FromUtf8Error),
+    #[error(transparent)]
     UnsupportedFeature(#[from] UnsupportedFeature),
+    #[error(transparent)]
+    UnsupportedNetProtocol(#[from] UnsupportedNetProtocol),
     #[error(transparent)]
     CollectionNotFound(#[from] CollectionNotFound),
     #[error(transparent)]
@@ -41,7 +50,10 @@ impl ODataError {
 impl axum::response::IntoResponse for ODataError {
     fn into_response(self) -> axum::response::Response {
         match self {
-            Self::Internal(_) => {
+            Self::Internal(_)
+            | Self::BatchUnexpectedRowsNumber(_)
+            | Self::UnexpectedBatchesNumber(_)
+            | Self::FromUtf8Error(_) => {
                 (http::StatusCode::INTERNAL_SERVER_ERROR, "Internal error").into_response()
             }
             Self::CollectionNotFound(e) => e.into_response(),
@@ -50,6 +62,7 @@ impl axum::response::IntoResponse for ODataError {
             Self::UnsupportedFeature(e) => e.into_response(),
             Self::CollectionAddressNotAssigned(e) => e.into_response(),
             Self::KeyColumnNotAssigned(e) => e.into_response(),
+            Self::UnsupportedNetProtocol(e) => e.into_response(),
         }
     }
 }
@@ -152,6 +165,54 @@ impl UnsupportedColumnType {
 }
 
 impl axum::response::IntoResponse for UnsupportedColumnType {
+    fn into_response(self) -> axum::response::Response {
+        (http::StatusCode::NOT_IMPLEMENTED, self.to_string()).into_response()
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
+#[error("Batch has unexpected rows number: {num_rows}")]
+pub struct BatchUnexpectedRowsNumber {
+    pub num_rows: usize,
+}
+
+impl BatchUnexpectedRowsNumber {
+    pub fn new(num_rows: usize) -> Self {
+        Self { num_rows }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
+#[error("Unexpected number of batches: {num}")]
+pub struct UnexpectedBatchesNumber {
+    pub num: usize,
+}
+
+impl UnexpectedBatchesNumber {
+    pub fn new(num: usize) -> Self {
+        Self { num }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
+#[error("Unsupported net protocol: {url}")]
+pub struct UnsupportedNetProtocol {
+    pub url: String,
+}
+
+impl UnsupportedNetProtocol {
+    pub fn new(url: String) -> Self {
+        Self { url }
+    }
+}
+
+impl axum::response::IntoResponse for UnsupportedNetProtocol {
     fn into_response(self) -> axum::response::Response {
         (http::StatusCode::NOT_IMPLEMENTED, self.to_string()).into_response()
     }

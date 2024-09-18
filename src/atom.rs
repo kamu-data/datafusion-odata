@@ -9,8 +9,65 @@ use quick_xml::events::*;
 
 use crate::{
     context::{CollectionContext, OnUnsupported},
-    error::{ODataError, UnsupportedColumnType},
+    error::{ODataError, UnsupportedColumnType, UnsupportedDataType, UnsupportedNetProtocol},
+    metadata::to_edm_type,
 };
+
+struct Edm {
+    typ: String,
+    _name: String,
+    tag: String,
+    _nullable: bool,
+}
+
+impl Edm {
+    fn from_field(field: &Arc<Field>) -> Result<Self, UnsupportedDataType> {
+        let name = field.name().clone();
+        let tag = format!("d:{name}");
+        let typ = to_edm_type(field.data_type())?.to_string();
+        Ok(Self {
+            typ,
+            tag,
+            _name: name,
+            _nullable: field.is_nullable(),
+        })
+    }
+}
+
+fn to_edms(
+    ctx: &dyn CollectionContext,
+    schema: &Schema,
+    collection_name: &str,
+) -> Result<(Vec<(Edm, usize)>, usize), UnsupportedDataType> {
+    let mut edms = Vec::new();
+    let mut key_edm_index = usize::MAX;
+
+    for (index, field) in schema.fields().iter().enumerate() {
+        if field.name() == &ctx.key_column_alias() {
+            key_edm_index = index;
+            continue;
+        }
+        let edm = match Edm::from_field(field) {
+            Ok(typ) => typ,
+            Err(err) => match ctx.on_unsupported_feature() {
+                OnUnsupported::Error => return Err(err),
+                OnUnsupported::Warn => {
+                    tracing::error!(
+                        table = collection_name,
+                        field = field.name(),
+                        error = %err,
+                        error_dbg = ?err,
+                        "Unsupported field type - skipping",
+                    );
+                    continue;
+                }
+            },
+        };
+
+        edms.push((edm, index));
+    }
+    Ok((edms, key_edm_index))
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -74,7 +131,6 @@ pub fn write_atom_feed_from_records<W>(
     record_batches: Vec<RecordBatch>,
     ctx: &dyn CollectionContext,
     updated_time: DateTime<Utc>,
-    on_unsupported: OnUnsupported,
     writer: &mut quick_xml::Writer<W>,
 ) -> Result<(), ODataError>
 where
@@ -86,8 +142,13 @@ where
     let type_name = ctx.collection_name()?;
     let type_namespace = ctx.collection_namespace()?;
 
-    assert!(service_base_url.starts_with("http"));
-    assert!(collection_base_url.starts_with("http"));
+    if !service_base_url.starts_with("http") {
+        return Err(UnsupportedNetProtocol::new(service_base_url).into());
+    }
+    if !collection_base_url.starts_with("http") {
+        return Err(UnsupportedNetProtocol::new(collection_base_url).into());
+    }
+
     if !service_base_url.ends_with('/') {
         service_base_url.push('/');
     }
@@ -97,35 +158,7 @@ where
 
     let fq_type = format!("{type_namespace}.{type_name}");
 
-    let mut columns = Vec::new();
-    let mut id_column_index = usize::MAX;
-
-    for (index, field) in schema.fields().iter().enumerate() {
-        let name = field.name().clone();
-        if name == ctx.key_column_alias() {
-            id_column_index = index;
-            continue;
-        }
-        let tag = format!("d:{name}");
-        let typ = match super::metadata::to_edm_type(field.data_type()) {
-            Ok(typ) => typ,
-            Err(err) => match on_unsupported {
-                OnUnsupported::Error => panic!("{}", err),
-                OnUnsupported::Warn => {
-                    tracing::error!(
-                        table = collection_name,
-                        field = field.name(),
-                        error = %err,
-                        error_dbg = ?err,
-                        "Unsupported field type - skipping",
-                    );
-                    continue;
-                }
-            },
-        };
-
-        columns.push((index, name, tag, typ));
-    }
+    let (edms, key_edm_index) = to_edms(ctx, schema, &collection_name)?;
 
     writer.write_event(quick_xml::events::Event::Decl(BytesDecl::new(
         "1.0",
@@ -183,9 +216,7 @@ where
             //   <name />
             // </author>
 
-            let id = encode_primitive_dyn(batch.column(id_column_index), row)?
-                .unescape()
-                .unwrap();
+            let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.unescape()?;
 
             let entry_url_rel = format!("{collection_name}({id})");
             let entry_url_full = format!("{collection_base_url}({id})");
@@ -232,14 +263,14 @@ where
             ))?;
             writer.write_event(Event::Start(BytesStart::new("m:properties")))?;
 
-            for (i, _cname, ctag, typ) in &columns {
-                let col = batch.column(*i);
+            for (edm, index) in &edms {
+                let col = batch.column(*index);
 
-                let mut start = BytesStart::new(ctag);
-                start.push_attribute(("m:type", *typ));
+                let mut start = BytesStart::new(edm.tag.clone());
+                start.push_attribute(("m:type", edm.typ.as_str()));
                 writer.write_event(Event::Start(start))?;
                 writer.write_event(Event::Text(encode_primitive_dyn(col, row)?))?;
-                writer.write_event(Event::End(BytesEnd::new(ctag)))?;
+                writer.write_event(Event::End(BytesEnd::new(edm.tag.clone())))?;
             }
 
             writer.write_event(Event::End(BytesEnd::new("m:properties")))?;
@@ -288,22 +319,24 @@ pub fn write_atom_entry_from_record<W>(
     batch: RecordBatch,
     ctx: &dyn CollectionContext,
     updated_time: DateTime<Utc>,
-    on_unsupported: OnUnsupported,
     writer: &mut quick_xml::Writer<W>,
 ) -> Result<(), ODataError>
 where
     W: std::io::Write,
 {
-    assert_eq!(batch.num_rows(), 1);
-
     let mut service_base_url = ctx.service_base_url()?;
     let mut collection_base_url = ctx.collection_base_url()?;
     let collection_name = ctx.collection_name()?;
     let type_name = ctx.collection_name()?;
     let type_namespace = ctx.collection_namespace()?;
 
-    assert!(service_base_url.starts_with("http"));
-    assert!(collection_base_url.starts_with("http"));
+    if !service_base_url.starts_with("http") {
+        return Err(UnsupportedNetProtocol::new(service_base_url).into());
+    }
+    if !collection_base_url.starts_with("http") {
+        return Err(UnsupportedNetProtocol::new(collection_base_url).into());
+    }
+
     if !service_base_url.ends_with('/') {
         service_base_url.push('/');
     }
@@ -313,35 +346,7 @@ where
 
     let fq_type = format!("{type_namespace}.{type_name}");
 
-    let mut columns = Vec::new();
-    let mut id_column_index = usize::MAX;
-
-    for (index, field) in schema.fields().iter().enumerate() {
-        let name = field.name().clone();
-        if name == ctx.key_column_alias() {
-            id_column_index = index;
-            continue;
-        }
-        let tag = format!("d:{name}");
-        let typ = match super::metadata::to_edm_type(field.data_type()) {
-            Ok(typ) => typ,
-            Err(err) => match on_unsupported {
-                OnUnsupported::Error => panic!("{}", err),
-                OnUnsupported::Warn => {
-                    tracing::error!(
-                        table = collection_name,
-                        field = field.name(),
-                        error = %err,
-                        error_dbg = ?err,
-                        "Unsupported field type - skipping",
-                    );
-                    continue;
-                }
-            },
-        };
-
-        columns.push((index, name, tag, typ));
-    }
+    let (edms, key_edm_index) = to_edms(ctx, schema, &collection_name)?;
 
     writer.write_event(quick_xml::events::Event::Decl(BytesDecl::new(
         "1.0",
@@ -373,9 +378,7 @@ where
     // </author>
 
     let row = 0;
-    let id = encode_primitive_dyn(batch.column(id_column_index), row)?
-        .unescape()
-        .unwrap();
+    let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.unescape()?;
 
     let entry_url_rel = format!("{collection_name}({id})");
     let entry_url_full = format!("{collection_base_url}({id})");
@@ -422,14 +425,14 @@ where
     ))?;
     writer.write_event(Event::Start(BytesStart::new("m:properties")))?;
 
-    for (i, _cname, ctag, typ) in &columns {
-        let col = batch.column(*i);
+    for (edm, index) in &edms {
+        let col = batch.column(*index);
 
-        let mut start = BytesStart::new(ctag);
-        start.push_attribute(("m:type", *typ));
+        let mut start = BytesStart::new(edm.tag.clone());
+        start.push_attribute(("m:type", edm.typ.as_str()));
         writer.write_event(Event::Start(start))?;
         writer.write_event(Event::Text(encode_primitive_dyn(col, row)?))?;
-        writer.write_event(Event::End(BytesEnd::new(ctag)))?;
+        writer.write_event(Event::End(BytesEnd::new(edm.tag.clone())))?;
     }
 
     writer.write_event(Event::End(BytesEnd::new("m:properties")))?;
@@ -470,14 +473,16 @@ fn encode_primitive_dyn(
             DataType::Timestamp(_, _) => {
                 let arr = col.as_primitive::<TimestampMillisecondType>();
                 let ticks = arr.value(row);
-                let ts = chrono::DateTime::from_timestamp_millis(ticks).unwrap();
+                let ts = chrono::DateTime::from_timestamp_millis(ticks)
+                    .ok_or(UnsupportedColumnType::new(col_type))?;
                 Ok(encode_date_time(&ts))
             }
             DataType::Date32 => Err(UnsupportedColumnType::new(col_type)),
             DataType::Date64 => {
                 let arr = col.as_primitive::<Date64Type>();
                 let ticks = arr.value(row);
-                let ts = chrono::DateTime::from_timestamp_millis(ticks).unwrap();
+                let ts = chrono::DateTime::from_timestamp_millis(ticks)
+                    .ok_or(UnsupportedColumnType::new(col_type))?;
                 Ok(encode_date_time(&ts))
             }
             DataType::Time32(_) => Err(UnsupportedColumnType::new(col_type)),

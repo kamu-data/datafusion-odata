@@ -5,7 +5,7 @@ use axum::{extract::Query, response::Response, Extension};
 use crate::{
     collection::QueryParamsRaw,
     context::{CollectionContext, OnUnsupported, ServiceContext, DEFAULT_NAMESPACE},
-    error::{ODataError, UnsupportedDataType},
+    error::{BatchUnexpectedRowsNumber, ODataError, UnexpectedBatchesNumber, UnsupportedDataType},
     metadata::{
         to_edm_type, DataServices, Edmx, EntityContainer, EntityKey, EntitySet, EntityType,
         Property, PropertyRef,
@@ -164,19 +164,29 @@ pub async fn odata_collection_handler(
             record_batches,
             ctx.as_ref(),
             ctx.last_updated_time().await,
-            ctx.on_unsupported_feature(),
             &mut writer,
         )?;
     } else {
         let num_rows: usize = record_batches.iter().map(|b| b.num_rows()).sum();
-        assert!(num_rows <= 1, "Request by key returned {} rows", num_rows);
-        assert!(
-            record_batches.len() <= 1,
-            "Request by key returned {} batches",
-            record_batches.len()
-        );
+        if num_rows > 1 {
+            return Err(BatchUnexpectedRowsNumber::new(num_rows).into());
+        }
 
-        if record_batches.len() != 1 || record_batches[0].num_rows() != 1 {
+        if record_batches.len() > 1 {
+            return Err(UnexpectedBatchesNumber::new(record_batches.len()).into());
+        }
+
+        let record_batch = match record_batches.into_iter().next() {
+            Some(rb) => rb,
+            None => {
+                return Response::builder()
+                    .status(http::StatusCode::NOT_FOUND)
+                    .body(String::new())
+                    .map_err(ODataError::internal);
+            }
+        };
+
+        if record_batch.num_rows() != 1 {
             return Response::builder()
                 .status(http::StatusCode::NOT_FOUND)
                 .body(String::new())
@@ -185,10 +195,9 @@ pub async fn odata_collection_handler(
 
         crate::atom::write_atom_entry_from_record(
             &schema,
-            record_batches.into_iter().next().unwrap(),
+            record_batch,
             ctx.as_ref(),
             ctx.last_updated_time().await,
-            ctx.on_unsupported_feature(),
             &mut writer,
         )?;
     }
@@ -228,5 +237,5 @@ where
         .write_serializable(tag, object)
         .map_err(ODataError::internal)?;
 
-    Ok(String::from_utf8(writer.into_inner()).unwrap())
+    Ok(String::from_utf8(writer.into_inner())?)
 }
