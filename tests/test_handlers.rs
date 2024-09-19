@@ -87,5 +87,3 @@ async fn test_metadata() {
         .replace('\n', "")
     );
 }
-
-

@@ -1,4 +1,12 @@
-use datafusion::prelude::*;
+use chrono::DateTime;
+use datafusion::{
+    common::{Column, ScalarValue},
+    logical_expr::{expr::InList, BinaryExpr, Operator},
+    prelude::*,
+};
+use odata_params::filters::{
+    CompareOperator as ODataOperator, Expr as ODataExpr, Value as ODataValue,
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -12,6 +20,8 @@ pub struct QueryParamsRaw {
     pub skip: Option<u64>,
     #[serde(rename = "$top")]
     pub top: Option<u64>,
+    #[serde(rename = "$filter")]
+    pub filter: Option<String>,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -41,11 +51,17 @@ impl QueryParamsRaw {
         let skip = self.skip.map(|v| v as usize);
         let top = self.top.map(|v| v as usize);
 
+        // XXX consider returning an error here ?
+        let filter = self
+            .filter
+            .and_then(|f| odata_params::filters::parse_str(f).ok());
+
         QueryParams {
             select,
             order_by,
             skip,
             top,
+            filter,
         }
     }
 }
@@ -62,6 +78,8 @@ pub struct QueryParams {
     pub skip: Option<usize>,
     /// Maximum number of records to return
     pub top: Option<usize>,
+    /// Filter a collection of resources   
+    pub filter: Option<ODataExpr>,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -93,6 +111,14 @@ impl QueryParams {
             return df.filter(col(key_column_alias).eq(lit(key.clone())));
         }
 
+        let df = match self.filter {
+            Some(filter) => {
+                let filter = odata_expr_to_df_expr(&filter);
+                df.filter(filter)?
+            }
+            None => df,
+        };
+
         // Order by
         let df = if self.order_by.is_empty() {
             df
@@ -110,6 +136,67 @@ impl QueryParams {
             self.skip.unwrap_or(0),
             Some(std::cmp::min(self.top.unwrap_or(default_rows), max_rows)),
         )
+    }
+}
+
+fn odata_expr_to_df_expr(res: &ODataExpr) -> Expr {
+    match res {
+        ODataExpr::Or(l, r) => Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)),
+            Operator::Or,
+            Box::new(odata_expr_to_df_expr(r)),
+        )),
+        ODataExpr::And(l, r) => Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)),
+            Operator::And,
+            Box::new(odata_expr_to_df_expr(r)),
+        )),
+        ODataExpr::Compare(l, op, r) => Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)),
+            odata_op_to_df_op(op),
+            Box::new(odata_expr_to_df_expr(r)),
+        )),
+        ODataExpr::Value(v) => Expr::Literal(odata_value_to_df_value(v)),
+        ODataExpr::Not(e) => Expr::Not(Box::new(odata_expr_to_df_expr(e))),
+        ODataExpr::In(i, l) => Expr::InList(InList::new(
+            Box::new(odata_expr_to_df_expr(i)),
+            l.iter().map(odata_expr_to_df_expr).collect(),
+            false,
+        )),
+        ODataExpr::Identifier(s) => Expr::Column(Column::new_unqualified(s)),
+        ODataExpr::Function(..) => todo!(),
+    }
+}
+
+fn odata_value_to_df_value(v: &ODataValue) -> ScalarValue {
+    match v {
+        ODataValue::String(s) => ScalarValue::LargeUtf8(Some(s.clone())),
+        ODataValue::Bool(b) => ScalarValue::Boolean(Some(*b)),
+        ODataValue::Null => ScalarValue::Null,
+        ODataValue::Number(d) => {
+            let d = d.to_string().parse::<i64>().unwrap();
+            ScalarValue::Int64(Some(d))
+        }
+        ODataValue::DateTime(d) => ScalarValue::Date64(Some(d.timestamp())),
+        ODataValue::Date(d) => {
+            let d = d.and_hms_opt(0, 0, 0).unwrap();
+            let timestamp =
+                DateTime::<chrono::Utc>::from_naive_utc_and_offset(d, chrono::Utc).timestamp();
+            ScalarValue::Date64(Some(timestamp))
+        }
+        ODataValue::Time(_) => todo!(),
+        ODataValue::Uuid(u) => ScalarValue::LargeUtf8(Some(u.to_string())),
+    }
+}
+
+fn odata_op_to_df_op(op: &ODataOperator) -> Operator {
+    match op {
+        ODataOperator::Equal => Operator::Eq,
+        ODataOperator::NotEqual => Operator::NotEq,
+        ODataOperator::LessThan => Operator::Lt,
+        ODataOperator::GreaterThan => Operator::Gt,
+        ODataOperator::LessOrEqual => Operator::LtEq,
+        ODataOperator::GreaterOrEqual => Operator::GtEq,
     }
 }
 
