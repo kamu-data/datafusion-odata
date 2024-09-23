@@ -20,6 +20,8 @@ pub enum ODataError {
     #[error(transparent)]
     KeyColumnNotAssigned(#[from] KeyColumnNotAssigned),
     #[error(transparent)]
+    FilterParsingError(#[from] FilterParsingError),
+    #[error(transparent)]
     Internal(InternalError),
 }
 
@@ -53,6 +55,7 @@ impl axum::response::IntoResponse for ODataError {
             Self::CollectionAddressNotAssigned(e) => e.into_response(),
             Self::KeyColumnNotAssigned(e) => e.into_response(),
             Self::UnsupportedNetProtocol(e) => e.into_response(),
+            Self::FilterParsingError(e) => e.into_response(),
         }
     }
 }
@@ -71,6 +74,32 @@ impl InternalError {
         Self {
             source: error.into(),
         }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
+#[error("Filter parsing error: {msg}")]
+pub struct FilterParsingError {
+    pub msg: String,
+}
+
+impl FilterParsingError {
+    pub fn new(msg: impl Into<String>) -> Self {
+        Self { msg: msg.into() }
+    }
+}
+
+impl axum::response::IntoResponse for FilterParsingError {
+    fn into_response(self) -> axum::response::Response {
+        (http::StatusCode::BAD_REQUEST, self.to_string()).into_response()
+    }
+}
+
+impl From<odata_params::filters::ParseError> for ODataError {
+    fn from(error: odata_params::filters::ParseError) -> Self {
+        ODataError::FilterParsingError(FilterParsingError::new(error.to_string()))
     }
 }
 

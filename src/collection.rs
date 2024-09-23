@@ -8,6 +8,8 @@ use odata_params::filters::{
     CompareOperator as ODataOperator, Expr as ODataExpr, Value as ODataValue,
 };
 
+use crate::error::{FilterParsingError, ODataError, UnsupportedFeature};
+
 ///////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, serde::Deserialize)]
@@ -27,7 +29,7 @@ pub struct QueryParamsRaw {
 ///////////////////////////////////////////////////////////////////////////////
 
 impl QueryParamsRaw {
-    pub fn decode(self) -> QueryParams {
+    pub fn decode(self) -> Result<QueryParams, ODataError> {
         let select = self.select.unwrap_or_default();
         let mut select: Vec<_> = select.split(',').map(|s| s.to_string()).collect();
         select.retain(|i| !i.is_empty());
@@ -51,18 +53,21 @@ impl QueryParamsRaw {
         let skip = self.skip.map(|v| v as usize);
         let top = self.top.map(|v| v as usize);
 
-        // XXX consider returning an error here ?
-        let filter = self
-            .filter
-            .and_then(|f| odata_params::filters::parse_str(f).ok());
+        let filter = match self.filter {
+            Some(fltr) => {
+                let parsed_fltr = odata_params::filters::parse_str(fltr)?;
+                Some(odata_expr_to_df_expr(&parsed_fltr)?)
+            }
+            None => None,
+        };
 
-        QueryParams {
+        Ok(QueryParams {
             select,
             order_by,
             skip,
             top,
             filter,
-        }
+        })
     }
 }
 
@@ -79,7 +84,7 @@ pub struct QueryParams {
     /// Maximum number of records to return
     pub top: Option<usize>,
     /// Filter a collection of resources   
-    pub filter: Option<ODataExpr>,
+    pub filter: Option<Expr>,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -112,10 +117,7 @@ impl QueryParams {
         }
 
         let df = match self.filter {
-            Some(filter) => {
-                let filter = odata_expr_to_df_expr(&filter);
-                df.filter(filter)?
-            }
+            Some(filter) => df.filter(filter)?,
             None => df,
         };
 
@@ -139,53 +141,64 @@ impl QueryParams {
     }
 }
 
-fn odata_expr_to_df_expr(res: &ODataExpr) -> Expr {
+fn odata_expr_to_df_expr(res: &ODataExpr) -> Result<Expr, ODataError> {
     match res {
-        ODataExpr::Or(l, r) => Expr::BinaryExpr(BinaryExpr::new(
-            Box::new(odata_expr_to_df_expr(l)),
+        ODataExpr::Or(l, r) => Ok(Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)?),
             Operator::Or,
-            Box::new(odata_expr_to_df_expr(r)),
-        )),
-        ODataExpr::And(l, r) => Expr::BinaryExpr(BinaryExpr::new(
-            Box::new(odata_expr_to_df_expr(l)),
+            Box::new(odata_expr_to_df_expr(r)?),
+        ))),
+        ODataExpr::And(l, r) => Ok(Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)?),
             Operator::And,
-            Box::new(odata_expr_to_df_expr(r)),
-        )),
-        ODataExpr::Compare(l, op, r) => Expr::BinaryExpr(BinaryExpr::new(
-            Box::new(odata_expr_to_df_expr(l)),
+            Box::new(odata_expr_to_df_expr(r)?),
+        ))),
+        ODataExpr::Compare(l, op, r) => Ok(Expr::BinaryExpr(BinaryExpr::new(
+            Box::new(odata_expr_to_df_expr(l)?),
             odata_op_to_df_op(op),
-            Box::new(odata_expr_to_df_expr(r)),
-        )),
-        ODataExpr::Value(v) => Expr::Literal(odata_value_to_df_value(v)),
-        ODataExpr::Not(e) => Expr::Not(Box::new(odata_expr_to_df_expr(e))),
-        ODataExpr::In(i, l) => Expr::InList(InList::new(
-            Box::new(odata_expr_to_df_expr(i)),
-            l.iter().map(odata_expr_to_df_expr).collect(),
+            Box::new(odata_expr_to_df_expr(r)?),
+        ))),
+        ODataExpr::Value(v) => Ok(Expr::Literal(odata_value_to_df_value(v)?)),
+        ODataExpr::Not(e) => Ok(Expr::Not(Box::new(odata_expr_to_df_expr(e)?))),
+        ODataExpr::In(i, l) => Ok(Expr::InList(InList::new(
+            Box::new(odata_expr_to_df_expr(i)?),
+            l.iter()
+                .map(odata_expr_to_df_expr)
+                .collect::<Result<Vec<Expr>, ODataError>>()?,
             false,
-        )),
-        ODataExpr::Identifier(s) => Expr::Column(Column::new_unqualified(s)),
-        ODataExpr::Function(..) => todo!(),
+        ))),
+        ODataExpr::Identifier(s) => Ok(Expr::Column(Column::new_unqualified(s))),
+        ODataExpr::Function(..) => {
+            Err(UnsupportedFeature::new("Function within the filter is not supported").into())
+        }
     }
 }
 
-fn odata_value_to_df_value(v: &ODataValue) -> ScalarValue {
+fn odata_value_to_df_value(v: &ODataValue) -> Result<ScalarValue, ODataError> {
     match v {
-        ODataValue::String(s) => ScalarValue::LargeUtf8(Some(s.clone())),
-        ODataValue::Bool(b) => ScalarValue::Boolean(Some(*b)),
-        ODataValue::Null => ScalarValue::Null,
+        ODataValue::String(s) => Ok(ScalarValue::LargeUtf8(Some(s.clone()))),
+        ODataValue::Bool(b) => Ok(ScalarValue::Boolean(Some(*b))),
+        ODataValue::Null => Ok(ScalarValue::Null),
         ODataValue::Number(d) => {
-            let d = d.to_string().parse::<i64>().unwrap();
-            ScalarValue::Int64(Some(d))
+            let d = d
+                .to_string()
+                .parse::<i64>()
+                .map_err(|_| FilterParsingError::new("Failed to parse number"))?;
+            Ok(ScalarValue::Int64(Some(d)))
         }
-        ODataValue::DateTime(d) => ScalarValue::Date64(Some(d.timestamp())),
+        ODataValue::DateTime(d) => Ok(ScalarValue::Date64(Some(d.timestamp()))),
         ODataValue::Date(d) => {
-            let d = d.and_hms_opt(0, 0, 0).unwrap();
+            let d = d
+                .and_hms_opt(0, 0, 0)
+                .ok_or(FilterParsingError::new("Failed to parse date"))?;
             let timestamp =
                 DateTime::<chrono::Utc>::from_naive_utc_and_offset(d, chrono::Utc).timestamp();
-            ScalarValue::Date64(Some(timestamp))
+            Ok(ScalarValue::Date64(Some(timestamp)))
         }
-        ODataValue::Time(_) => todo!(),
-        ODataValue::Uuid(u) => ScalarValue::LargeUtf8(Some(u.to_string())),
+        ODataValue::Uuid(u) => Ok(ScalarValue::LargeUtf8(Some(u.to_string()))),
+        ODataValue::Time(_) => {
+            Err(UnsupportedFeature::new("Time value in filter is not supported").into())
+        }
     }
 }
 

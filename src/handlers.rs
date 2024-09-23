@@ -142,7 +142,7 @@ pub async fn odata_collection_handler(
     Query(query): Query<QueryParamsRaw>,
     _headers: axum::http::HeaderMap,
 ) -> Result<Response<String>, ODataError> {
-    let query = query.decode();
+    let query = query.decode()?;
     tracing::debug!(?query, "Decoded query");
 
     let df = ctx.query(query).await.map_err(ODataError::from)?;
