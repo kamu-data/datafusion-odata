@@ -40,7 +40,7 @@ This code is super raw and experimental. Very far from prod-ready. Use at your o
   - [x] `$orderby`
   - [x] `$skip`
   - [x] `$top`
-  - [ ] `$filter`
+  - [x] `$filter`
   - [ ] pagination
   - [x] real object IDs
 - [x] Collection entry by ID (`service/collection(id)`)
