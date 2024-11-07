@@ -18,7 +18,7 @@ http = "1.1"
 quick-xml = { version = "0.36", features = ["serialize"] }
 regex = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"] }
-thiserror = { version = "1" }
+thiserror = { version = "2" }
 tracing = "0.1"
 odata-params = "0.4"
 
