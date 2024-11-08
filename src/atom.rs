@@ -491,6 +491,11 @@ fn encode_primitive_dyn(
                 let val = arr.value(row);
                 Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
             }
+            DataType::Utf8View => {
+                let arr = col.as_string_view();
+                let val = arr.value(row);
+                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
+            }
             DataType::LargeUtf8 => {
                 let arr = col.as_string::<i64>();
                 let val = arr.value(row);
@@ -504,7 +509,6 @@ fn encode_primitive_dyn(
             | DataType::FixedSizeBinary(_)
             | DataType::LargeBinary
             | DataType::BinaryView
-            | DataType::Utf8View
             | DataType::List(_)
             | DataType::FixedSizeList(_, _)
             | DataType::LargeList(_)

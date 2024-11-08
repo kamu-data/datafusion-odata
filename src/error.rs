@@ -221,3 +221,9 @@ impl From<quick_xml::Error> for ODataError {
         ODataError::Internal(InternalError::new(error))
     }
 }
+
+impl From<std::io::Error> for ODataError {
+    fn from(error: std::io::Error) -> Self {
+        ODataError::Internal(InternalError::new(error))
+    }
+}

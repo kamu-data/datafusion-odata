@@ -11,7 +11,7 @@ async fn test_collection() {
     let resp = datafusion_odata::handlers::odata_collection_handler(
         axum::Extension(ctx),
         axum::extract::Query(QueryParamsRaw {
-            select: Some("offset,close".to_string()),
+            select: Some("offset,from_symbol,to_symbol,close".to_string()),
             order_by: Some("offset asc".to_string()),
             skip: None,
             top: Some(2),
@@ -21,7 +21,7 @@ async fn test_collection() {
     )
     .await
     .unwrap();
-    assert_eq!(
+    pretty_assertions::assert_eq!(
         *resp.body(),
         indoc!(
             r#"
@@ -45,6 +45,8 @@ async fn test_collection() {
             <content type="application/xml">
             <m:properties>
             <d:offset m:type="Edm.Int64">0</d:offset>
+            <d:from_symbol m:type="Edm.String">spy</d:from_symbol>
+            <d:to_symbol m:type="Edm.String">usd</d:to_symbol>
             <d:close m:type="Edm.Double">135.5625</d:close>
             </m:properties>
             </content>
@@ -59,6 +61,8 @@ async fn test_collection() {
             <content type="application/xml">
             <m:properties>
             <d:offset m:type="Edm.Int64">1</d:offset>
+            <d:from_symbol m:type="Edm.String">spy</d:from_symbol>
+            <d:to_symbol m:type="Edm.String">usd</d:to_symbol>
             <d:close m:type="Edm.Double">134.5937</d:close>
             </m:properties>
             </content>
@@ -88,7 +92,7 @@ async fn test_collection_entity_by_id() {
     )
     .await
     .unwrap();
-    assert_eq!(
+    pretty_assertions::assert_eq!(
         *resp.body(),
         indoc!(
             r#"
@@ -156,7 +160,7 @@ async fn test_collection_with_filter() {
     )
     .await
     .unwrap();
-    assert_eq!(
+    pretty_assertions::assert_eq!(
         *resp.body(),
         indoc!(
             r#"

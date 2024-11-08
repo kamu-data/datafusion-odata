@@ -185,7 +185,7 @@ pub fn to_edm_type(dt: &DataType) -> std::result::Result<&'static str, Unsupport
         DataType::UInt16 => Ok("Edm.Int16"),
         DataType::UInt32 => Ok("Edm.Int32"),
         DataType::UInt64 => Ok("Edm.Int64"),
-        DataType::Utf8 => Ok("Edm.String"),
+        DataType::Utf8 | DataType::Utf8View => Ok("Edm.String"),
         DataType::LargeUtf8 => Ok("Edm.String"),
         DataType::Float16 => Ok("Edm.Single"),
         DataType::Float32 => Ok("Edm.Single"),
@@ -194,7 +194,6 @@ pub fn to_edm_type(dt: &DataType) -> std::result::Result<&'static str, Unsupport
         DataType::Date32 => Ok("Edm.DateTime"),
         DataType::Date64 => Ok("Edm.DateTime"),
         DataType::Null
-        | DataType::Utf8View
         | DataType::Time32(_)
         | DataType::Time64(_)
         | DataType::Duration(_)

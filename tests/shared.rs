@@ -11,7 +11,7 @@ use datafusion_odata::{
 pub async fn fixture(collection_elem: &str) -> Arc<ODataContext> {
     let ctx = SessionContext::new();
     ctx.register_parquet(
-        "covid19.canada",
+        TableReference::bare("covid19.canada"),
         "examples/data/covid.parquet",
         ParquetReadOptions {
             file_extension: ".parquet",
@@ -22,7 +22,7 @@ pub async fn fixture(collection_elem: &str) -> Arc<ODataContext> {
     .unwrap();
 
     ctx.register_parquet(
-        "tickers.spy",
+        TableReference::bare("tickers.spy"),
         "examples/data/tickers.parquet",
         ParquetReadOptions {
             file_extension: ".parquet",

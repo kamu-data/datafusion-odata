@@ -12,7 +12,7 @@ async fn test_service() {
     let resp = datafusion_odata::handlers::odata_service_handler(axum::Extension(ctx))
         .await
         .unwrap();
-    assert_eq!(
+    pretty_assertions::assert_eq!(
         *resp.body(),
         indoc!(
             r#"
@@ -44,7 +44,7 @@ async fn test_metadata() {
     let resp = datafusion_odata::handlers::odata_metadata_handler(axum::Extension(ctx))
         .await
         .unwrap();
-    assert_eq!(
+    pretty_assertions::assert_eq!(
         *resp.body(),
         indoc!(
             r#"
