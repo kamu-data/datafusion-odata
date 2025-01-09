@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-odata"
-version = "43.0.0"
+version = "44.0.0"
 edition = "2021"
 repository = "https://github.com/kamu-data/datafusion-odata"
 description = "OData protocol adapter for Apache Datafusion"
@@ -12,9 +12,9 @@ license = "Apache-2.0"
 async-trait = "0.1"
 axum = { version = "0.7" }
 chrono = { version = "0.4", default-features = false }
-datafusion = { version = "43", default-features = false }
+datafusion = { version = "44", default-features = false }
 hyper = { version = "1", features = ["server"] }
-http = "1.1"
+http = { version = "1" }
 quick-xml = { version = "0.37", features = ["serialize"] }
 regex = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -23,7 +23,7 @@ tracing = "0.1"
 odata-params = "0.4"
 
 [dev-dependencies]
-datafusion = { version = "43", default-features = false, features = [
+datafusion = { version = "44", default-features = false, features = [
     "parquet",
 ] }
 indoc = { version = "2" }
@@ -40,7 +40,7 @@ tracing-bunyan-formatter = "0.3"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
 ] }
-tower = "0.5"
+tower = { version = "0.5" }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
 [patch.crates-io]
