@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-odata"
-version = "44.0.0"
+version = "44.1.0"
 edition = "2021"
 repository = "https://github.com/kamu-data/datafusion-odata"
 description = "OData protocol adapter for Apache Datafusion"
@@ -10,7 +10,8 @@ license = "Apache-2.0"
 
 [dependencies]
 async-trait = "0.1"
-axum = { version = "0.7" }
+axum = { version = "0.8" }
+axum-extra = { version = "0.10" }
 chrono = { version = "0.4", default-features = false }
 datafusion = { version = "44", default-features = false }
 hyper = { version = "1", features = ["server"] }

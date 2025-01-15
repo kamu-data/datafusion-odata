@@ -42,7 +42,7 @@ impl<'de> serde::Deserialize<'de> for ODataFilter {
 
 struct ODataFilterVisitor;
 
-impl<'de> serde::de::Visitor<'de> for ODataFilterVisitor {
+impl serde::de::Visitor<'_> for ODataFilterVisitor {
     type Value = ODataFilter;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
