@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use datafusion::arrow::{
-    array::{Array, AsArray, RecordBatch},
+    array::{Array, AsArray, PrimitiveArray, RecordBatch},
     datatypes::{DataType, *},
 };
 use quick_xml::events::*;
@@ -474,13 +474,7 @@ fn encode_primitive_dyn(
         DataType::Float16 => Ok(encode_primitive::<Float16Type>(col, row)),
         DataType::Float32 => Ok(encode_primitive::<Float32Type>(col, row)),
         DataType::Float64 => Ok(encode_primitive::<Float64Type>(col, row)),
-        DataType::Timestamp(_, _) => {
-            let arr = col.as_primitive::<TimestampMillisecondType>();
-            let ticks = arr.value(row);
-            let ts = chrono::DateTime::from_timestamp_millis(ticks)
-                .ok_or(UnsupportedDataType::new(col_type))?;
-            Ok(encode_date_time(&ts))
-        }
+        DataType::Timestamp(unit, tz) => encode_timestamp(col, row, unit, tz),
         DataType::Date32 => Err(UnsupportedDataType::new(col_type)),
         DataType::Date64 => {
             let arr = col.as_primitive::<Date64Type>();
@@ -541,9 +535,57 @@ where
 
 ///////////////////////////////////////////////////////////////////////////////
 
+fn encode_timestamp(
+    col: &Arc<dyn Array>,
+    index: usize,
+    unit: TimeUnit,
+    tz: Option<Arc<str>>,
+) -> Result<BytesText<'static>, UnsupportedDataType> {
+    let dt = match unit {
+        TimeUnit::Microsecond => {
+            let value = cast_primitive::<TimestampMicrosecondType>(col, index)?;
+            DateTime::from_timestamp_micros(value)
+        }
+        TimeUnit::Millisecond => {
+            let value = cast_primitive::<TimestampMillisecondType>(col, index)?;
+            DateTime::from_timestamp_millis(value)
+        }
+        TimeUnit::Nanosecond => {
+            let value = cast_primitive::<TimestampNanosecondType>(col, index)?;
+            Some(DateTime::from_timestamp_nanos(value))
+        }
+        TimeUnit::Second => {
+            let value = cast_primitive::<TimestampSecondType>(col, index)?;
+            DateTime::from_timestamp(value, 0)
+        }
+    };
+
+    match dt {
+        Some(d) => Ok(encode_date_time(&d)),
+        None => Err(UnsupportedDataType::new(DataType::Timestamp(unit, tz))),
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 fn encode_date_time(dt: &DateTime<Utc>) -> BytesText<'static> {
     let s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     BytesText::from_escaped(s)
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+fn cast_primitive<T: ArrowPrimitiveType>(
+    column: &Arc<dyn Array>,
+    index: usize,
+) -> Result<T::Native, UnsupportedDataType> {
+    let arr: &PrimitiveArray<T> = match column.as_primitive_opt() {
+        Some(a) => a,
+        None => return Err(UnsupportedDataType::new(T::DATA_TYPE)),
+    };
+
+    let value = arr.value(index);
+    Ok(value)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
