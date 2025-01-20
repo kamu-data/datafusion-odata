@@ -191,7 +191,7 @@ where
         .write_text_content(BytesText::from_escaped(&collection_name))?;
     writer
         .create_element("updated")
-        .write_text_content(encode_date_time(&updated_time))?;
+        .write_text_content(encode_date_time(&updated_time, true))?;
     writer
         .create_element("link")
         .with_attributes([
@@ -243,7 +243,7 @@ where
             writer.create_element("title").write_empty()?;
             writer
                 .create_element("updated")
-                .write_text_content(encode_date_time(&updated_time))?;
+                .write_text_content(encode_date_time(&updated_time, true))?;
             writer.write_event(Event::Start(BytesStart::new("author")))?;
             writer.create_element("name").write_empty()?;
             writer.write_event(Event::End(BytesEnd::new("author")))?;
@@ -409,7 +409,7 @@ where
     writer.create_element("title").write_empty()?;
     writer
         .create_element("updated")
-        .write_text_content(encode_date_time(&updated_time))?;
+        .write_text_content(encode_date_time(&updated_time, true))?;
     writer.write_event(Event::Start(BytesStart::new("author")))?;
     writer.create_element("name").write_empty()?;
     writer.write_event(Event::End(BytesEnd::new("author")))?;
@@ -457,6 +457,7 @@ fn encode_primitive_dyn(
     row: usize,
 ) -> Result<BytesText, UnsupportedDataType> {
     let col_type = col.data_type().clone();
+
     match col_type {
         DataType::Boolean => {
             let arr = col.as_boolean();
@@ -481,7 +482,7 @@ fn encode_primitive_dyn(
             let ticks = arr.value(row);
             let ts = chrono::DateTime::from_timestamp_millis(ticks)
                 .ok_or(UnsupportedDataType::new(col_type))?;
-            Ok(encode_date_time(&ts))
+            Ok(encode_date_time(&ts, false))
         }
         DataType::Null | DataType::Utf8 => {
             let arr = col.as_string::<i32>();
@@ -561,15 +562,21 @@ fn encode_timestamp(
     };
 
     match dt {
-        Some(d) => Ok(encode_date_time(&d)),
+        Some(d) => Ok(encode_date_time(&d, tz.is_some())),
         None => Err(UnsupportedDataType::new(DataType::Timestamp(unit, tz))),
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-fn encode_date_time(dt: &DateTime<Utc>) -> BytesText<'static> {
-    let s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+fn encode_date_time(dt: &DateTime<Utc>, tz: bool) -> BytesText<'static> {
+    let mut s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, tz);
+    if !tz {
+        let d = s.split('+').collect::<Vec<&str>>();
+        if d.len() == 2 {
+            s = d[0].to_string();
+        }
+    }
     BytesText::from_escaped(s)
 }
 
@@ -616,6 +623,6 @@ mod tests {
         let values = Arc::new(values) as Arc<dyn Array>;
 
         let result = encode_primitive_dyn(&values, 0).unwrap();
-        assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00:00.000Z"));
+        assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00:00.000"));
     }
 }

@@ -190,7 +190,8 @@ pub fn to_edm_type(dt: &DataType) -> std::result::Result<&'static str, Unsupport
         DataType::Float16 => Ok("Edm.Single"),
         DataType::Float32 => Ok("Edm.Single"),
         DataType::Float64 => Ok("Edm.Double"),
-        DataType::Timestamp(_, _) => Ok("Edm.DateTime"),
+        DataType::Timestamp(_, None) => Ok("Edm.DateTime"),
+        DataType::Timestamp(_, Some(_)) => Ok("Edm.DateTimeOffset"),
         DataType::Date32 => Ok("Edm.DateTime"),
         DataType::Date64 => Ok("Edm.DateTime"),
         DataType::Null

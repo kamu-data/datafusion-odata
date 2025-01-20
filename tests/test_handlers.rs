@@ -56,8 +56,8 @@ async fn test_metadata() {
             <Key><PropertyRef Name="offset"/></Key>
             <Property Name="offset" Type="Edm.Int64" Nullable="false"/>
             <Property Name="op" Type="Edm.Int32" Nullable="false"/>
-            <Property Name="system_time" Type="Edm.DateTime" Nullable="false"/>
-            <Property Name="reported_date" Type="Edm.DateTime" Nullable="false"/>
+            <Property Name="system_time" Type="Edm.DateTimeOffset" Nullable="false"/>
+            <Property Name="reported_date" Type="Edm.DateTimeOffset" Nullable="false"/>
             <Property Name="province" Type="Edm.String" Nullable="false"/>
             <Property Name="total_daily" Type="Edm.Int64" Nullable="false"/>
             </EntityType>
@@ -65,8 +65,8 @@ async fn test_metadata() {
             <Key><PropertyRef Name="offset"/></Key>
             <Property Name="offset" Type="Edm.Int64" Nullable="true"/>
             <Property Name="op" Type="Edm.Int32" Nullable="true"/>
-            <Property Name="system_time" Type="Edm.DateTime" Nullable="true"/>
-            <Property Name="event_time" Type="Edm.DateTime" Nullable="true"/>
+            <Property Name="system_time" Type="Edm.DateTimeOffset" Nullable="true"/>
+            <Property Name="event_time" Type="Edm.DateTimeOffset" Nullable="true"/>
             <Property Name="from_symbol" Type="Edm.String" Nullable="true"/>
             <Property Name="to_symbol" Type="Edm.String" Nullable="true"/>
             <Property Name="open" Type="Edm.Double" Nullable="true"/>
