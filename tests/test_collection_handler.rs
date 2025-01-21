@@ -194,3 +194,50 @@ async fn test_collection_with_filter() {
         .replace('\n', "")
     );
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[tokio::test]
+async fn test_collection_with_null_values() {
+    let ctx = fixture("tickers.spy(2)").await;
+    let resp = datafusion_odata::handlers::odata_collection_handler(
+        axum::Extension(ctx),
+        axum::extract::Query(QueryParamsRaw {
+            select: Some("offset,close".to_string()),
+            order_by: None,
+            skip: None,
+            top: None,
+            filter: None,
+        }),
+        axum::http::HeaderMap::new(),
+    )
+    .await
+    .unwrap();
+    pretty_assertions::assert_eq!(
+        *resp.body(),
+        indoc!(
+            r#"
+            <?xml version="1.0" encoding="utf-8"?>
+            <entry
+             xml:base="http://example.com/odata/"
+             xmlns="http://www.w3.org/2005/Atom"
+             xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices"
+             xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+            <id>http://example.com/odatatickers.spy(2)</id>
+            <category scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" term="default.tickers.spy"/>
+            <link rel="edit" title="tickers.spy" href="tickers.spy(2)"/>
+            <title/>
+            <updated>2023-01-01T00:00:00.000Z</updated>
+            <author><name/></author>
+            <content type="application/xml">
+            <m:properties>
+            <d:offset m:type="Edm.Int64">2</d:offset>
+            <d:close m:type="Edm.Double" m:null="true"/>
+            </m:properties>
+            </content>
+            </entry>
+            "#
+        )
+        .replace('\n', "")
+    );
+}

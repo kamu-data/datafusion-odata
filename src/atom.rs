@@ -431,7 +431,13 @@ where
         let col = batch.column(*index);
 
         let mut start = BytesStart::new(&edm.tag);
+
         start.push_attribute(("m:type", edm.typ.as_str()));
+        if col.is_null(row) {
+            start.push_attribute(("m:null", true.to_string().as_str()));
+            writer.write_event(Event::Empty(start))?;
+            continue;
+        }
         writer.write_event(Event::Start(start))?;
         writer.write_event(Event::Text(encode_primitive_dyn(col, row)?))?;
         writer.write_event(Event::End(BytesEnd::new(&edm.tag)))?;
@@ -451,77 +457,73 @@ fn encode_primitive_dyn(
     row: usize,
 ) -> Result<BytesText, UnsupportedDataType> {
     let col_type = col.data_type().clone();
-    if col.is_null(row) {
-        Ok(BytesText::new("null"))
-    } else {
-        match col_type {
-            DataType::Boolean => {
-                let arr = col.as_boolean();
-                let val = arr.value(row).to_string();
-                Ok(BytesText::from_escaped(val))
-            }
-            DataType::Int8 => Ok(encode_primitive::<Int8Type>(col, row)),
-            DataType::Int16 => Ok(encode_primitive::<Int16Type>(col, row)),
-            DataType::Int32 => Ok(encode_primitive::<Int32Type>(col, row)),
-            DataType::Int64 => Ok(encode_primitive::<Int64Type>(col, row)),
-            DataType::UInt8 => Ok(encode_primitive::<UInt8Type>(col, row)),
-            DataType::UInt16 => Ok(encode_primitive::<UInt16Type>(col, row)),
-            DataType::UInt32 => Ok(encode_primitive::<UInt32Type>(col, row)),
-            DataType::UInt64 => Ok(encode_primitive::<UInt64Type>(col, row)),
-            DataType::Float16 => Ok(encode_primitive::<Float16Type>(col, row)),
-            DataType::Float32 => Ok(encode_primitive::<Float32Type>(col, row)),
-            DataType::Float64 => Ok(encode_primitive::<Float64Type>(col, row)),
-            DataType::Timestamp(_, _) => {
-                let arr = col.as_primitive::<TimestampMillisecondType>();
-                let ticks = arr.value(row);
-                let ts = chrono::DateTime::from_timestamp_millis(ticks)
-                    .ok_or(UnsupportedDataType::new(col_type))?;
-                Ok(encode_date_time(&ts))
-            }
-            DataType::Date32 => Err(UnsupportedDataType::new(col_type)),
-            DataType::Date64 => {
-                let arr = col.as_primitive::<Date64Type>();
-                let ticks = arr.value(row);
-                let ts = chrono::DateTime::from_timestamp_millis(ticks)
-                    .ok_or(UnsupportedDataType::new(col_type))?;
-                Ok(encode_date_time(&ts))
-            }
-            DataType::Null | DataType::Utf8 => {
-                let arr = col.as_string::<i32>();
-                let val = arr.value(row);
-                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
-            }
-            DataType::Utf8View => {
-                let arr = col.as_string_view();
-                let val = arr.value(row);
-                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
-            }
-            DataType::LargeUtf8 => {
-                let arr = col.as_string::<i64>();
-                let val = arr.value(row);
-                Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
-            }
-            DataType::Time32(_)
-            | DataType::Time64(_)
-            | DataType::Duration(_)
-            | DataType::Interval(_)
-            | DataType::Binary
-            | DataType::FixedSizeBinary(_)
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::List(_)
-            | DataType::FixedSizeList(_, _)
-            | DataType::LargeList(_)
-            | DataType::ListView(_)
-            | DataType::LargeListView(_)
-            | DataType::Struct(_)
-            | DataType::Union(_, _)
-            | DataType::Dictionary(_, _)
-            | DataType::Decimal128(_, _)
-            | DataType::Decimal256(_, _)
-            | DataType::Map(_, _)
-            | DataType::RunEndEncoded(_, _) => Err(UnsupportedDataType::new(col_type)),
+    match col_type {
+        DataType::Boolean => {
+            let arr = col.as_boolean();
+            let val = arr.value(row).to_string();
+            Ok(BytesText::from_escaped(val))
         }
+        DataType::Int8 => Ok(encode_primitive::<Int8Type>(col, row)),
+        DataType::Int16 => Ok(encode_primitive::<Int16Type>(col, row)),
+        DataType::Int32 => Ok(encode_primitive::<Int32Type>(col, row)),
+        DataType::Int64 => Ok(encode_primitive::<Int64Type>(col, row)),
+        DataType::UInt8 => Ok(encode_primitive::<UInt8Type>(col, row)),
+        DataType::UInt16 => Ok(encode_primitive::<UInt16Type>(col, row)),
+        DataType::UInt32 => Ok(encode_primitive::<UInt32Type>(col, row)),
+        DataType::UInt64 => Ok(encode_primitive::<UInt64Type>(col, row)),
+        DataType::Float16 => Ok(encode_primitive::<Float16Type>(col, row)),
+        DataType::Float32 => Ok(encode_primitive::<Float32Type>(col, row)),
+        DataType::Float64 => Ok(encode_primitive::<Float64Type>(col, row)),
+        DataType::Timestamp(_, _) => {
+            let arr = col.as_primitive::<TimestampMillisecondType>();
+            let ticks = arr.value(row);
+            let ts = chrono::DateTime::from_timestamp_millis(ticks)
+                .ok_or(UnsupportedDataType::new(col_type))?;
+            Ok(encode_date_time(&ts))
+        }
+        DataType::Date32 => Err(UnsupportedDataType::new(col_type)),
+        DataType::Date64 => {
+            let arr = col.as_primitive::<Date64Type>();
+            let ticks = arr.value(row);
+            let ts = chrono::DateTime::from_timestamp_millis(ticks)
+                .ok_or(UnsupportedDataType::new(col_type))?;
+            Ok(encode_date_time(&ts))
+        }
+        DataType::Null | DataType::Utf8 => {
+            let arr = col.as_string::<i32>();
+            let val = arr.value(row);
+            Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
+        }
+        DataType::Utf8View => {
+            let arr = col.as_string_view();
+            let val = arr.value(row);
+            Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
+        }
+        DataType::LargeUtf8 => {
+            let arr = col.as_string::<i64>();
+            let val = arr.value(row);
+            Ok(BytesText::from_escaped(quick_xml::escape::escape(val)))
+        }
+        DataType::Time32(_)
+        | DataType::Time64(_)
+        | DataType::Duration(_)
+        | DataType::Interval(_)
+        | DataType::Binary
+        | DataType::FixedSizeBinary(_)
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::List(_)
+        | DataType::FixedSizeList(_, _)
+        | DataType::LargeList(_)
+        | DataType::ListView(_)
+        | DataType::LargeListView(_)
+        | DataType::Struct(_)
+        | DataType::Union(_, _)
+        | DataType::Dictionary(_, _)
+        | DataType::Decimal128(_, _)
+        | DataType::Decimal256(_, _)
+        | DataType::Map(_, _)
+        | DataType::RunEndEncoded(_, _) => Err(UnsupportedDataType::new(col_type)),
     }
 }
 
