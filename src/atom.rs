@@ -605,8 +605,8 @@ mod tests {
 
     #[test]
     fn test_encode_timestamp() {
-        let expected = vec!["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"];
-        let expected_no_tz = vec![
+        let expected = ["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"];
+        let expected_no_tz = [
             "2020-01-01T12:00:00.000+00:00",
             "2020-01-01T12:01:00.000+00:00",
         ];
@@ -620,9 +620,9 @@ mod tests {
             .with_timezone(Arc::from("UTC")),
         ) as Arc<dyn Array>;
 
-        for i in 0..expected.len() {
+        for (i, e) in expected.iter().enumerate() {
             let result = encode_primitive_dyn(&ts_milli, i).unwrap();
-            assert_eq!(result, BytesText::new(expected[i]));
+            assert_eq!(result, BytesText::new(e));
         }
 
         let ts_micro = Arc::new(
@@ -635,9 +635,9 @@ mod tests {
             .with_timezone(Arc::from("UTC")),
         ) as Arc<dyn Array>;
 
-        for i in 0..expected.len() {
+        for (i, e) in expected.iter().enumerate() {
             let result = encode_primitive_dyn(&ts_micro, i).unwrap();
-            assert_eq!(result, BytesText::new(expected[i]));
+            assert_eq!(result, BytesText::new(e));
         }
 
         let ts_second = Arc::new(
@@ -650,9 +650,9 @@ mod tests {
             .with_timezone(Arc::from("UTC")),
         ) as Arc<dyn Array>;
 
-        for i in 0..expected.len() {
+        for (i, e) in expected.iter().enumerate() {
             let result = encode_primitive_dyn(&ts_second, i).unwrap();
-            assert_eq!(result, BytesText::new(expected[i]));
+            assert_eq!(result, BytesText::new(e));
         }
 
         // with no timezone
@@ -663,9 +663,9 @@ mod tests {
             1_577_880_060_000_000,
         ])) as Arc<dyn Array>;
 
-        for i in 0..expected_no_tz.len() {
+        for (i, e) in expected_no_tz.iter().enumerate() {
             let result = encode_primitive_dyn(&ts_micro_no_tz, i).unwrap();
-            assert_eq!(result, BytesText::new(expected_no_tz[i]));
+            assert_eq!(result, BytesText::new(e));
         }
     }
 
