@@ -570,13 +570,7 @@ fn encode_timestamp(
 ///////////////////////////////////////////////////////////////////////////////
 
 fn encode_date_time(dt: &DateTime<Utc>, tz: bool) -> BytesText<'static> {
-    let mut s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, tz);
-    if !tz {
-        let d = s.split('+').collect::<Vec<&str>>();
-        if d.len() == 2 {
-            s = d[0].to_string();
-        }
-    }
+    let s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, tz);
     BytesText::from_escaped(s)
 }
 
@@ -602,9 +596,78 @@ mod tests {
     use super::*;
 
     use datafusion::arrow::{
-        array::{Array, Date64Array, Int64Array},
+        array::{
+            Array, Date64Array, Int64Array, TimestampMicrosecondArray, TimestampMillisecondArray,
+            TimestampSecondArray,
+        },
         datatypes::{ArrowPrimitiveType, Date64Type},
     };
+
+    #[test]
+    fn test_encode_timestamp() {
+        let expected = vec!["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"];
+        let expected_no_tz = vec![
+            "2020-01-01T12:00:00.000+00:00",
+            "2020-01-01T12:01:00.000+00:00",
+        ];
+        let ts_milli = Arc::new(
+            TimestampMillisecondArray::from(vec![
+                // 2020-01-01T12:00:00Z
+                1_577_880_000_000,
+                // 2020-01-01T12:01:00Z
+                1_577_880_060_000,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        for i in 0..expected.len() {
+            let result = encode_primitive_dyn(&ts_milli, i).unwrap();
+            assert_eq!(result, BytesText::new(expected[i]));
+        }
+
+        let ts_micro = Arc::new(
+            TimestampMicrosecondArray::from(vec![
+                // 2020-01-01T12:00:00Z
+                1_577_880_000_000_000,
+                // 2020-01-01T12:01:00Z
+                1_577_880_060_000_000,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        for i in 0..expected.len() {
+            let result = encode_primitive_dyn(&ts_micro, i).unwrap();
+            assert_eq!(result, BytesText::new(expected[i]));
+        }
+
+        let ts_second = Arc::new(
+            TimestampSecondArray::from(vec![
+                // 2020-01-01T12:00:00
+                1_577_880_000,
+                // 2020-01-01T12:01:00
+                1_577_880_060,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        for i in 0..expected.len() {
+            let result = encode_primitive_dyn(&ts_second, i).unwrap();
+            assert_eq!(result, BytesText::new(expected[i]));
+        }
+
+        // with no timezone
+        let ts_micro_no_tz = Arc::new(TimestampMicrosecondArray::from(vec![
+            // 2020-01-01T12:00:00
+            1_577_880_000_000_000,
+            // 2020-01-01T12:01:00
+            1_577_880_060_000_000,
+        ])) as Arc<dyn Array>;
+
+        for i in 0..expected_no_tz.len() {
+            let result = encode_primitive_dyn(&ts_micro_no_tz, i).unwrap();
+            assert_eq!(result, BytesText::new(expected_no_tz[i]));
+        }
+    }
 
     #[test]
     fn test_encode_primitive_dyn() {
@@ -623,6 +686,9 @@ mod tests {
         let values = Arc::new(values) as Arc<dyn Array>;
 
         let result = encode_primitive_dyn(&values, 0).unwrap();
-        assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00:00.000"));
+        assert_eq!(
+            result.borrow(),
+            BytesText::new("2024-09-11T00:00:00.000+00:00")
+        );
     }
 }
