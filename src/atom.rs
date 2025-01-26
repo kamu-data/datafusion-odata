@@ -570,7 +570,11 @@ fn encode_timestamp(
 ///////////////////////////////////////////////////////////////////////////////
 
 fn encode_date_time(dt: &DateTime<Utc>, tz: bool) -> BytesText<'static> {
-    let s = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, tz);
+    let s = if tz {
+        dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    } else {
+        dt.naive_utc().format("%Y-%m-%dT%H:%M").to_string()
+    };
     BytesText::from_escaped(s)
 }
 
@@ -606,10 +610,7 @@ mod tests {
     #[test]
     fn test_encode_timestamp() {
         let expected = ["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"];
-        let expected_no_tz = [
-            "2020-01-01T12:00:00.000+00:00",
-            "2020-01-01T12:01:00.000+00:00",
-        ];
+        let expected_no_tz = ["2020-01-01T12:00", "2020-01-01T12:01"];
         let ts_milli = Arc::new(
             TimestampMillisecondArray::from(vec![
                 // 2020-01-01T12:00:00Z
@@ -686,9 +687,6 @@ mod tests {
         let values = Arc::new(values) as Arc<dyn Array>;
 
         let result = encode_primitive_dyn(&values, 0).unwrap();
-        assert_eq!(
-            result.borrow(),
-            BytesText::new("2024-09-11T00:00:00.000+00:00")
-        );
+        assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00"));
     }
 }
