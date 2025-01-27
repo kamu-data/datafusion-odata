@@ -191,7 +191,7 @@ where
         .write_text_content(BytesText::from_escaped(&collection_name))?;
     writer
         .create_element("updated")
-        .write_text_content(encode_date_time(&updated_time, true))?;
+        .write_text_content(encode_date_time(&updated_time))?;
     writer
         .create_element("link")
         .with_attributes([
@@ -243,7 +243,7 @@ where
             writer.create_element("title").write_empty()?;
             writer
                 .create_element("updated")
-                .write_text_content(encode_date_time(&updated_time, true))?;
+                .write_text_content(encode_date_time(&updated_time))?;
             writer.write_event(Event::Start(BytesStart::new("author")))?;
             writer.create_element("name").write_empty()?;
             writer.write_event(Event::End(BytesEnd::new("author")))?;
@@ -409,7 +409,7 @@ where
     writer.create_element("title").write_empty()?;
     writer
         .create_element("updated")
-        .write_text_content(encode_date_time(&updated_time, true))?;
+        .write_text_content(encode_date_time(&updated_time))?;
     writer.write_event(Event::Start(BytesStart::new("author")))?;
     writer.create_element("name").write_empty()?;
     writer.write_event(Event::End(BytesEnd::new("author")))?;
@@ -476,13 +476,20 @@ fn encode_primitive_dyn(
         DataType::Float32 => Ok(encode_primitive::<Float32Type>(col, row)),
         DataType::Float64 => Ok(encode_primitive::<Float64Type>(col, row)),
         DataType::Timestamp(unit, tz) => encode_timestamp(col, row, unit, tz),
-        DataType::Date32 => Err(UnsupportedDataType::new(col_type)),
+        DataType::Date32 => {
+            let arr = col.as_primitive::<Date32Type>();
+            let days_since_epoch = chrono::Duration::days(arr.value(row).into());
+            let epoch = chrono::DateTime::UNIX_EPOCH.date_naive();
+            let date = epoch + days_since_epoch;
+            Ok(encode_date(&date))
+        }
         DataType::Date64 => {
             let arr = col.as_primitive::<Date64Type>();
             let ticks = arr.value(row);
             let ts = chrono::DateTime::from_timestamp_millis(ticks)
                 .ok_or(UnsupportedDataType::new(col_type))?;
-            Ok(encode_date_time(&ts, false))
+
+            Ok(encode_date(&ts.date_naive()))
         }
         DataType::Null | DataType::Utf8 => {
             let arr = col.as_string::<i32>();
@@ -562,20 +569,29 @@ fn encode_timestamp(
     };
 
     match dt {
-        Some(d) => Ok(encode_date_time(&d, tz.is_some())),
+        Some(d) => Ok(if tz.is_some() {
+            encode_date_time(&d)
+        } else {
+            encode_date_time_naive(&d.naive_utc())
+        }),
         None => Err(UnsupportedDataType::new(DataType::Timestamp(unit, tz))),
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-fn encode_date_time(dt: &DateTime<Utc>, tz: bool) -> BytesText<'static> {
-    let s = if tz {
-        dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-    } else {
-        dt.naive_utc().format("%Y-%m-%dT%H:%M").to_string()
-    };
-    BytesText::from_escaped(s)
+fn encode_date(d: &chrono::NaiveDate) -> BytesText<'static> {
+    // Note: there is not `Date` type in Atom so we are representing dates as naive `DateTime`
+    let dt = chrono::NaiveDateTime::new(*d, chrono::NaiveTime::MIN);
+    BytesText::from_escaped(dt.format("%Y-%m-%dT%H:%M").to_string())
+}
+
+fn encode_date_time(dt: &DateTime<Utc>) -> BytesText<'static> {
+    BytesText::from_escaped(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+}
+
+fn encode_date_time_naive(dt: &chrono::NaiveDateTime) -> BytesText<'static> {
+    BytesText::from_escaped(dt.format("%Y-%m-%dT%H:%M:%S%.f").to_string())
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -601,83 +617,27 @@ mod tests {
 
     use datafusion::arrow::{
         array::{
-            Array, Date64Array, Int64Array, TimestampMicrosecondArray, TimestampMillisecondArray,
-            TimestampSecondArray,
+            Array, Date32Array, Date64Array, Int64Array, TimestampMicrosecondArray,
+            TimestampMillisecondArray, TimestampSecondArray,
         },
-        datatypes::{ArrowPrimitiveType, Date64Type},
+        datatypes::{ArrowPrimitiveType, Date32Type, Date64Type},
     };
 
     #[test]
-    fn test_encode_timestamp() {
-        let expected = ["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"];
-        let expected_no_tz = ["2020-01-01T12:00", "2020-01-01T12:01"];
-        let ts_milli = Arc::new(
-            TimestampMillisecondArray::from(vec![
-                // 2020-01-01T12:00:00Z
-                1_577_880_000_000,
-                // 2020-01-01T12:01:00Z
-                1_577_880_060_000,
-            ])
-            .with_timezone(Arc::from("UTC")),
-        ) as Arc<dyn Array>;
-
-        for (i, e) in expected.iter().enumerate() {
-            let result = encode_primitive_dyn(&ts_milli, i).unwrap();
-            assert_eq!(result, BytesText::new(e));
-        }
-
-        let ts_micro = Arc::new(
-            TimestampMicrosecondArray::from(vec![
-                // 2020-01-01T12:00:00Z
-                1_577_880_000_000_000,
-                // 2020-01-01T12:01:00Z
-                1_577_880_060_000_000,
-            ])
-            .with_timezone(Arc::from("UTC")),
-        ) as Arc<dyn Array>;
-
-        for (i, e) in expected.iter().enumerate() {
-            let result = encode_primitive_dyn(&ts_micro, i).unwrap();
-            assert_eq!(result, BytesText::new(e));
-        }
-
-        let ts_second = Arc::new(
-            TimestampSecondArray::from(vec![
-                // 2020-01-01T12:00:00
-                1_577_880_000,
-                // 2020-01-01T12:01:00
-                1_577_880_060,
-            ])
-            .with_timezone(Arc::from("UTC")),
-        ) as Arc<dyn Array>;
-
-        for (i, e) in expected.iter().enumerate() {
-            let result = encode_primitive_dyn(&ts_second, i).unwrap();
-            assert_eq!(result, BytesText::new(e));
-        }
-
-        // with no timezone
-        let ts_micro_no_tz = Arc::new(TimestampMicrosecondArray::from(vec![
-            // 2020-01-01T12:00:00
-            1_577_880_000_000_000,
-            // 2020-01-01T12:01:00
-            1_577_880_060_000_000,
-        ])) as Arc<dyn Array>;
-
-        for (i, e) in expected_no_tz.iter().enumerate() {
-            let result = encode_primitive_dyn(&ts_micro_no_tz, i).unwrap();
-            assert_eq!(result, BytesText::new(e));
-        }
-    }
-
-    #[test]
-    fn test_encode_primitive_dyn() {
-        let values: Int64Array = vec![1, 2, 3].into();
+    fn test_encode_date() {
+        // Date32
+        let values = [chrono::DateTime::from_timestamp_millis(1726012800000).unwrap()];
+        let values: Date32Array = values
+            .iter()
+            .map(|d| Date32Type::from_naive_date(d.date_naive()))
+            .collect::<Vec<<Date32Type as ArrowPrimitiveType>::Native>>()
+            .into();
         let values = Arc::new(values) as Arc<dyn Array>;
 
         let result = encode_primitive_dyn(&values, 0).unwrap();
-        assert_eq!(result, BytesText::new("1"));
+        assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00"));
 
+        // Date64
         let values = [chrono::DateTime::from_timestamp_millis(1726012800000).unwrap()];
         let values: Date64Array = values
             .iter()
@@ -688,5 +648,86 @@ mod tests {
 
         let result = encode_primitive_dyn(&values, 0).unwrap();
         assert_eq!(result.borrow(), BytesText::new("2024-09-11T00:00"));
+    }
+
+    #[test]
+    fn test_encode_timestamp() {
+        let assert_serializes_as = |arr: Arc<dyn Array>, expected: &[&'static str]| {
+            let actual: Vec<_> = (0..arr.len())
+                .map(|i| encode_primitive_dyn(&arr, i).unwrap())
+                .collect();
+            let expected: Vec<_> = expected.iter().map(|s| BytesText::new(s)).collect();
+            assert_eq!(actual, expected);
+        };
+
+        // Millis
+        let ts_milli = Arc::new(
+            TimestampMillisecondArray::from(vec![
+                // 2020-01-01T12:00:00Z
+                1_577_880_000_001,
+                // 2020-01-01T12:01:00Z
+                1_577_880_060_001,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        assert_serializes_as(
+            ts_milli,
+            &["2020-01-01T12:00:00.001Z", "2020-01-01T12:01:00.001Z"],
+        );
+
+        // Micros
+        let ts_micro = Arc::new(
+            TimestampMicrosecondArray::from(vec![
+                // 2020-01-01T12:00:00Z
+                1_577_880_000_000_001,
+                // 2020-01-01T12:01:00Z
+                1_577_880_060_000_001,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        assert_serializes_as(
+            ts_micro,
+            &["2020-01-01T12:00:00.000Z", "2020-01-01T12:01:00.000Z"],
+        );
+
+        // Second
+        let ts_second = Arc::new(
+            TimestampSecondArray::from(vec![
+                // 2020-01-01T12:00:01
+                1_577_880_001,
+                // 2020-01-01T12:01:01
+                1_577_880_061,
+            ])
+            .with_timezone(Arc::from("UTC")),
+        ) as Arc<dyn Array>;
+
+        assert_serializes_as(
+            ts_second,
+            &["2020-01-01T12:00:01.000Z", "2020-01-01T12:01:01.000Z"],
+        );
+
+        // No timezone
+        let ts_micro_no_tz = Arc::new(TimestampMicrosecondArray::from(vec![
+            // 2020-01-01T12:00:00
+            1_577_880_000_000_000,
+            // 2020-01-01T12:01:00.001
+            1_577_880_060_001_000,
+        ])) as Arc<dyn Array>;
+
+        assert_serializes_as(
+            ts_micro_no_tz,
+            &["2020-01-01T12:00:00", "2020-01-01T12:01:00.001"],
+        );
+    }
+
+    #[test]
+    fn test_encode_primitive_dyn() {
+        let values: Int64Array = vec![1, 2, 3].into();
+        let values = Arc::new(values) as Arc<dyn Array>;
+
+        let result = encode_primitive_dyn(&values, 0).unwrap();
+        assert_eq!(result, BytesText::new("1"));
     }
 }
