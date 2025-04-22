@@ -145,7 +145,7 @@ pub async fn odata_collection_handler(
     let query = query.decode()?;
     tracing::debug!(?query, "Decoded query");
 
-    let df = ctx.query(query).await.map_err(ODataError::from)?;
+    let df = ctx.query(query).await?;
 
     let schema: datafusion::arrow::datatypes::Schema = df.schema().clone().into();
     let record_batches = df.collect().await.map_err(ODataError::internal)?;

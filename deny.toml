@@ -12,11 +12,11 @@ skip-tree = [
     { name = "chrono-tz" },    # TODO: odata-params crate needs to update
     { name = "dashmap" },
     { name = "hashbrown" },
-    { name = "heck" },
     { name = "itertools" },
     { name = "syn" },
     { name = "sync_wrapper" },
     { name = "thiserror" },    # TODO: Temporary for v2 migration
+    { name = "twox-hash" },    # TODO: Waiting upgrade via lz4_flex, arrow-ipc
     { name = "windows-sys" },
 ]
 deny = [{ name = "openssl" }]
@@ -28,26 +28,13 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
-    "ISC",
     "MIT",
-    "MPL-2.0",
     "0BSD",
-    "OpenSSL",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
 ]
 private = { ignore = true }
-
-[[licenses.exceptions]]
-allow = ["Unicode-DFS-2016"]
-name = "unicode-ident"
-
-
-[[licenses.clarify]]
-name = "ring"
-expression = "MIT AND ISC AND OpenSSL"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 
 [sources]
