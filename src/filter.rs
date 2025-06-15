@@ -73,7 +73,7 @@ fn odata_expr_to_df_expr(res: &odata_filters::Expr) -> Result<Expr, ODataError> 
             odata_op_to_df_op(op),
             Box::new(odata_expr_to_df_expr(r)?),
         ))),
-        odata_filters::Expr::Value(v) => Ok(Expr::Literal(odata_value_to_df_value(v)?)),
+        odata_filters::Expr::Value(v) => Ok(Expr::Literal(odata_value_to_df_value(v)?, None)),
         odata_filters::Expr::Not(e) => Ok(Expr::Not(Box::new(odata_expr_to_df_expr(e)?))),
         odata_filters::Expr::In(i, l) => Ok(Expr::InList(InList::new(
             Box::new(odata_expr_to_df_expr(i)?),
