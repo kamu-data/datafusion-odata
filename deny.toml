@@ -8,15 +8,9 @@ workspace-default-features = "deny"
 # Avoid adding dependencies to this list as this slows down compilation.
 # Find another ways to avoid duplication.
 skip-tree = [
-    { name = "bitflags" },
-    { name = "chrono-tz" },    # TODO: odata-params crate needs to update
-    { name = "dashmap" },
+    { name = "chrono-tz" },   # TODO: odata-params crate needs to update
     { name = "hashbrown" },
-    { name = "itertools" },
-    { name = "syn" },
-    { name = "sync_wrapper" },
-    { name = "thiserror" },    # TODO: Temporary for v2 migration
-    { name = "twox-hash" },    # TODO: Waiting upgrade via lz4_flex, arrow-ipc
+    { name = "thiserror" },   # TODO: odata-params crate needs to update
     { name = "windows-sys" },
 ]
 deny = [{ name = "openssl" }]
@@ -28,6 +22,7 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
+    "ISC",
     "MIT",
     "0BSD",
     "Unicode-3.0",

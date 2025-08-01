@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use axum::{extract::Query, response::Response, Extension};
+use axum::{Extension, extract::Query, response::Response};
 
 use crate::{
     collection::QueryParamsRaw,
-    context::{CollectionContext, OnUnsupported, ServiceContext, DEFAULT_NAMESPACE},
+    context::{CollectionContext, DEFAULT_NAMESPACE, OnUnsupported, ServiceContext},
     error::{ODataError, UnsupportedDataType},
     metadata::{
-        to_edm_type, DataServices, Edmx, EntityContainer, EntityKey, EntitySet, EntityType,
-        Property, PropertyRef,
+        DataServices, Edmx, EntityContainer, EntityKey, EntitySet, EntityType, Property,
+        PropertyRef, to_edm_type,
     },
     service::{Collection, Service, Workspace},
 };

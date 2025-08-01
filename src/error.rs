@@ -222,6 +222,12 @@ impl From<quick_xml::Error> for ODataError {
     }
 }
 
+impl From<quick_xml::encoding::EncodingError> for ODataError {
+    fn from(error: quick_xml::encoding::EncodingError) -> Self {
+        ODataError::Internal(InternalError::new(error))
+    }
+}
+
 impl From<std::io::Error> for ODataError {
     fn from(error: std::io::Error) -> Self {
         ODataError::Internal(InternalError::new(error))

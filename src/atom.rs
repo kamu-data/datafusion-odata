@@ -214,7 +214,7 @@ where
             //   <name />
             // </author>
 
-            let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.unescape()?;
+            let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.decode()?;
 
             let entry_url_rel = format!("{collection_name}({id})");
             let entry_url_full = format!("{collection_base_url}({id})");
@@ -380,7 +380,7 @@ where
     // </author>
 
     let row = 0;
-    let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.unescape()?;
+    let id = encode_primitive_dyn(batch.column(key_edm_index), row)?.decode()?;
 
     let entry_url_rel = format!("{collection_name}({id})");
     let entry_url_full = format!("{collection_base_url}({id})");

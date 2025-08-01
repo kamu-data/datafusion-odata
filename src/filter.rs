@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use datafusion::{
-    logical_expr::{expr::InList, BinaryExpr, Operator},
+    logical_expr::{BinaryExpr, Operator, expr::InList},
     prelude::*,
     scalar::ScalarValue,
 };

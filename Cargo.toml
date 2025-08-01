@@ -1,7 +1,7 @@
 [package]
 name = "datafusion-odata"
-version = "48.0.0"
-edition = "2021"
+version = "49.0.0"
+edition = "2024"
 repository = "https://github.com/kamu-data/datafusion-odata"
 description = "OData protocol adapter for Apache Datafusion"
 keywords = ["datafusion", "sql", "arrow", "odata", "rest"]
@@ -13,10 +13,10 @@ async-trait = "0.1"
 axum = { version = "0.8" }
 axum-extra = { version = "0.10" }
 chrono = { version = "0.4", default-features = false }
-datafusion = { version = "48", default-features = false }
+datafusion = { version = "49", default-features = false }
 hyper = { version = "1", features = ["server"] }
 http = { version = "1" }
-quick-xml = { version = "0.37", features = ["serialize"] }
+quick-xml = { version = "0.38", features = ["serialize"] }
 regex = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 thiserror = { version = "2" }
@@ -24,12 +24,11 @@ tracing = "0.1"
 odata-params = "0.4"
 
 [dev-dependencies]
-datafusion = { version = "48", default-features = false, features = [
+datafusion = { version = "49", default-features = false, features = [
     "parquet",
 ] }
 indoc = { version = "2" }
 pretty_assertions = { version = "1" }
-tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "std",
     "fmt",
