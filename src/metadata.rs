@@ -211,6 +211,8 @@ pub fn to_edm_type(dt: &DataType) -> std::result::Result<&'static str, Unsupport
         | DataType::Struct(_)
         | DataType::Union(_, _)
         | DataType::Dictionary(_, _)
+        | DataType::Decimal32(_, _)
+        | DataType::Decimal64(_, _)
         | DataType::Decimal128(_, _)
         | DataType::Decimal256(_, _)
         | DataType::Map(_, _)

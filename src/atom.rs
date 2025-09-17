@@ -455,7 +455,7 @@ where
 fn encode_primitive_dyn(
     col: &Arc<dyn Array>,
     row: usize,
-) -> Result<BytesText, UnsupportedDataType> {
+) -> Result<BytesText<'_>, UnsupportedDataType> {
     let col_type = col.data_type().clone();
 
     match col_type {
@@ -522,6 +522,8 @@ fn encode_primitive_dyn(
         | DataType::Struct(_)
         | DataType::Union(_, _)
         | DataType::Dictionary(_, _)
+        | DataType::Decimal32(_, _)
+        | DataType::Decimal64(_, _)
         | DataType::Decimal128(_, _)
         | DataType::Decimal256(_, _)
         | DataType::Map(_, _)
@@ -531,7 +533,7 @@ fn encode_primitive_dyn(
 
 ///////////////////////////////////////////////////////////////////////////////
 
-fn encode_primitive<T>(arr: &Arc<dyn Array>, row: usize) -> BytesText
+fn encode_primitive<T>(arr: &Arc<dyn Array>, row: usize) -> BytesText<'_>
 where
     T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: std::fmt::Display,
