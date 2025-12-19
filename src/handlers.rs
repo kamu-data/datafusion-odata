@@ -147,7 +147,7 @@ pub async fn odata_collection_handler(
 
     let df = ctx.query(query).await?;
 
-    let schema: datafusion::arrow::datatypes::Schema = df.schema().clone().into();
+    let schema: datafusion::arrow::datatypes::SchemaRef = df.schema().inner().clone();
     let record_batches = df.collect().await.map_err(ODataError::internal)?;
 
     ctx.validate(&record_batches).await?;
