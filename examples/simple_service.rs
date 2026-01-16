@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use axum_extra::TypedHeader;
+use axum_extra::headers::Host;
 use chrono::{DateTime, Utc};
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::{prelude::*, sql::TableReference};
@@ -24,7 +26,7 @@ const DEFAULT_MAX_ROWS: usize = 100;
 
 pub async fn odata_service_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    host: axum_extra::extract::Host,
+    host: TypedHeader<Host>,
 ) -> Result<Response<String>, ODataError> {
     let ctx = Arc::new(ODataContext::new_service(query_ctx, host));
     datafusion_odata::handlers::odata_service_handler(axum::Extension(ctx)).await
@@ -34,7 +36,7 @@ pub async fn odata_service_handler(
 
 pub async fn odata_metadata_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    host: axum_extra::extract::Host,
+    host: TypedHeader<Host>,
 ) -> Result<Response<String>, ODataError> {
     let ctx = ODataContext::new_service(query_ctx, host);
     datafusion_odata::handlers::odata_metadata_handler(axum::Extension(Arc::new(ctx))).await
@@ -44,7 +46,7 @@ pub async fn odata_metadata_handler(
 
 pub async fn odata_collection_handler(
     axum::extract::State(query_ctx): axum::extract::State<SessionContext>,
-    host: axum_extra::extract::Host,
+    host: TypedHeader<Host>,
     axum::extract::Path(collection_path_element): axum::extract::Path<String>,
     query: axum::extract::Query<QueryParamsRaw>,
     headers: axum::http::HeaderMap,
@@ -70,7 +72,7 @@ pub struct ODataContext {
 }
 
 impl ODataContext {
-    fn new_service(query_ctx: SessionContext, host: axum_extra::extract::Host) -> Self {
+    fn new_service(query_ctx: SessionContext, host: TypedHeader<Host>) -> Self {
         let scheme = std::env::var("SCHEME").unwrap_or("http".to_string());
         Self {
             query_ctx,
@@ -81,7 +83,7 @@ impl ODataContext {
 
     fn new_collection(
         query_ctx: SessionContext,
-        host: axum_extra::extract::Host,
+        host: TypedHeader<Host>,
         addr: CollectionAddr,
     ) -> Self {
         let mut this = Self::new_service(query_ctx, host);
