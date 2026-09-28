@@ -4,7 +4,7 @@ use axum_extra::TypedHeader;
 use axum_extra::headers::Host;
 use chrono::{DateTime, Utc};
 use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::{prelude::*, sql::TableReference};
+use datafusion::{common::TableReference, prelude::*};
 
 use axum::response::Response;
 

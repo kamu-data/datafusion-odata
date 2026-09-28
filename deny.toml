@@ -8,9 +8,12 @@ workspace-default-features = "deny"
 # Avoid adding dependencies to this list as this slows down compilation.
 # Find another ways to avoid duplication.
 skip-tree = [
+    { name = "base64" },
     { name = "getrandom" },   # TODO: const-random crate needs to update
     { name = "chrono-tz" },   # TODO: odata-params crate needs to update
     { name = "hashbrown" },
+    { name = "itertools" },
+    { name = "num-bigint" },
     { name = "thiserror" },   # TODO: odata-params crate needs to update
     { name = "windows-sys" },
 ]
@@ -23,9 +26,7 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
-    "ISC",
     "MIT",
-    "0BSD",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
@@ -41,8 +42,4 @@ allow-org = { github = [] }
 
 [advisories]
 yanked = "deny"
-ignore = [
-    # paste (via datafusion-common)
-    # https://rustsec.org/advisories/RUSTSEC-2024-0436
-    "RUSTSEC-2024-0436",
-]
+ignore = []

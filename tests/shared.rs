@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use datafusion::{arrow::datatypes::SchemaRef, prelude::*, sql::TableReference};
+use datafusion::{arrow::datatypes::SchemaRef, common::TableReference, prelude::*};
 use datafusion_odata::{
     collection::{CollectionAddr, QueryParams},
     context::*,
